@@ -75,6 +75,12 @@ export interface RoomState {
   /** Par of every Hole of the Course, in play order. Its length is the number of Holes. */
   pars: number[];
   cup: CupState;
+  /**
+   * Obstacle time (ms) of the current Hole: 0 when play begins, running only
+   * while `playing`. Windmills and Sliding Walls are at the pose their data
+   * gives for this time (see obstacles.ts), so clients compute it themselves.
+   */
+  obstacleTimeMs: number;
   settings: GameSettings;
   players: Record<string, PlayerState>;
 }

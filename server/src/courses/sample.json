@@ -309,8 +309,32 @@
           "y": 130
         }
       ],
-      "windmills": [],
-      "slidingWalls": []
+      "windmills": [
+        {
+          "x": 158,
+          "y": 290,
+          "length": 170,
+          "thickness": 12,
+          "angularSpeed": 1.0471975511965976,
+          "phase": 0
+        }
+      ],
+      "slidingWalls": [
+        {
+          "width": 14,
+          "height": 120,
+          "start": {
+            "x": 420,
+            "y": 118
+          },
+          "end": {
+            "x": 590,
+            "y": 118
+          },
+          "period": 4,
+          "phase": 0
+        }
+      ]
     },
     {
       "id": "island-hop",

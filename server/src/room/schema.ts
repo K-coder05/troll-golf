@@ -68,6 +68,7 @@ export const RoomStateSchema = schema(
     phaseEndsAt: t.number(),
     pars: t.array("number"),
     cup: CupSchema,
+    obstacleTimeMs: t.number(),
     settings: SettingsSchema,
     players: t.map(PlayerSchema),
   },

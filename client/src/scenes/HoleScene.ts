@@ -8,6 +8,8 @@ import {
   type Phase,
   type ShootMessage,
   type SurfaceKind,
+  slidingWallCentre,
+  windmillCorners,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 
@@ -22,6 +24,7 @@ interface SyncedState {
   phase: Phase;
   holeIndex: number;
   cup: CupState;
+  obstacleTimeMs: number;
   players: {
     forEach(cb: (player: SyncedPlayer, id: string) => void): void;
     get(id: string): SyncedPlayer | undefined;
@@ -61,6 +64,8 @@ const COLORS = {
   wallEdge: 0x3f2a16,
   cup: 0x0b0b0b,
   tee: 0xd8f0dc,
+  obstacle: 0xc0562b,
+  obstacleEdge: 0x5c2410,
 };
 
 /** Fill and detail colour of each non-Fairway surface. */
@@ -87,6 +92,9 @@ export class HoleScene extends Phaser.Scene {
   private course!: Phaser.GameObjects.Graphics;
   private cup!: Phaser.GameObjects.Graphics;
   private drawnCup = "";
+  private obstacles!: Phaser.GameObjects.Graphics;
+  /** Last obstacle time the server sent, and when (performance.now) it arrived, to run on between patches. */
+  private obstacleSync = { serverMs: 0, receivedAt: 0 };
   private aim!: Phaser.GameObjects.Graphics;
   private balls = new Map<string, BallSprite>();
   private tab!: Phaser.Input.Keyboard.Key;
@@ -110,6 +118,7 @@ export class HoleScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(COLORS.outside);
     this.course = this.add.graphics().setDepth(0);
     this.cup = this.add.graphics().setDepth(1);
+    this.obstacles = this.add.graphics().setDepth(3);
     this.aim = this.add.graphics().setDepth(10);
 
     const keyboard = this.input.keyboard!;
@@ -149,6 +158,7 @@ export class HoleScene extends Phaser.Scene {
 
     for (const fx of this.takeFx()) this.playFx(fx);
     this.renderCup();
+    this.renderObstacles();
     this.renderBalls();
     // A shot can only start from a ball at rest during play; drop the aim otherwise.
     if (this.aimPoint && !this.canShoot()) this.aimPoint = null;
@@ -180,6 +190,38 @@ export class HoleScene extends Phaser.Scene {
     // The flag.
     g.lineStyle(2, 0xdddddd).lineBetween(cup.x, cup.y, cup.x, cup.y - 34);
     g.fillStyle(0xff3b3b).fillTriangle(cup.x, cup.y - 34, cup.x + 18, cup.y - 28, cup.x, cup.y - 22);
+  }
+
+  /**
+   * Windmills and Sliding Walls are drawn at the pose their data gives for the
+   * server's obstacle time (the same formulas the physics uses). Between 20 Hz
+   * patches the time runs on locally while playing, and snaps to the server's.
+   */
+  private renderObstacles(): void {
+    const state = this.syncedState();
+    const hole = this.drawnHole?.hole;
+    const g = this.obstacles.clear();
+    if (!state || !hole || (hole.windmills.length === 0 && hole.slidingWalls.length === 0)) return;
+    const now = performance.now();
+    const sync = this.obstacleSync;
+    if (state.obstacleTimeMs !== sync.serverMs) {
+      sync.serverMs = state.obstacleTimeMs;
+      sync.receivedAt = now;
+    }
+    const runOn = state.phase === "playing" ? Math.min(now - sync.receivedAt, 150) : 0;
+    const tSec = (sync.serverMs + runOn) / 1000;
+
+    for (const wall of hole.slidingWalls) {
+      const c = slidingWallCentre(wall, tSec);
+      g.fillStyle(COLORS.obstacle).fillRect(c.x - wall.width / 2, c.y - wall.height / 2, wall.width, wall.height);
+      g.lineStyle(2, COLORS.obstacleEdge).strokeRect(c.x - wall.width / 2, c.y - wall.height / 2, wall.width, wall.height);
+    }
+    for (const mill of hole.windmills) {
+      const corners = windmillCorners(mill, tSec).map((p) => new Phaser.Math.Vector2(p.x, p.y));
+      g.fillStyle(COLORS.obstacle).fillPoints(corners, true);
+      g.lineStyle(2, COLORS.obstacleEdge).strokePoints(corners, true);
+      g.fillStyle(COLORS.obstacleEdge).fillCircle(mill.x, mill.y, mill.thickness * 0.8);
+    }
   }
 
   private drawHole(message: HoleMessage): void {

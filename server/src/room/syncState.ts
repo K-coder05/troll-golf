@@ -16,6 +16,7 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
   target.cup.x = source.cup.x;
   target.cup.y = source.cup.y;
   target.cup.radius = source.cup.radius;
+  target.obstacleTimeMs = source.obstacleTimeMs;
 
   target.settings.chaosLevel = source.settings.chaosLevel;
   target.settings.holeTimerSec = source.settings.holeTimerSec;

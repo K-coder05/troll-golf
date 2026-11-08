@@ -108,6 +108,7 @@ export function createGame(options: CreateGameOptions): Game {
     phaseEndsAt: 0,
     pars: course.holes.map((h) => h.par),
     cup: { ...firstHole.cup },
+    obstacleTimeMs: 0,
     settings: { ...DEFAULT_SETTINGS, ...options.settings },
     players: {},
   };
@@ -180,6 +181,7 @@ export function createGame(options: CreateGameOptions): Game {
     surfaces = courseSurfaces(hole);
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
+    state.obstacleTimeMs = 0;
     const placed: Vec2[] = [];
     for (const player of Object.values(state.players)) {
       forgetBall(player.id);
@@ -423,6 +425,7 @@ export function createGame(options: CreateGameOptions): Game {
   function physicsStep(): void {
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
+    state.obstacleTimeMs = physics.obstacleTimeMs;
 
     for (const [id, player] of Object.entries(state.players)) {
       if (player.holedOut) continue;
