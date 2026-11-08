@@ -612,6 +612,10 @@ export class HoleScene extends Phaser.Scene {
       this.playBoxShatter(fx);
       return;
     }
+    if (fx.kind === "inkScreen") {
+      ITEM_RENDERERS.inkSplat?.playUse(this, fx);
+      return;
+    }
     if (fx.kind === "itemUse") {
       if (fx.item) ITEM_RENDERERS[fx.item]?.playUse(this, fx);
       return;

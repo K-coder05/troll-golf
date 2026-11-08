@@ -1,5 +1,6 @@
 import type { ItemHandlerRegistry } from "../items";
 import { freezeRay } from "./freezeRay";
+import { inkSplat } from "./inkSplat";
 import { mulligan } from "./mulligan";
 import { shield } from "./shield";
 
@@ -13,6 +14,7 @@ import { shield } from "./shield";
  */
 export const ITEM_HANDLERS: ItemHandlerRegistry = {
   freezeRay,
+  inkSplat,
   mulligan,
   shield,
 };

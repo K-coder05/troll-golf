@@ -394,3 +394,71 @@ describe("Freeze and the Nuke", () => {
     expect(frozen(t, "jay")).toBe(true);
   });
 });
+
+describe("Ink Splat", () => {
+  const INK = { ...REAL, inkSplat: ITEM_HANDLERS.inkSplat! };
+  const inkOnly = {
+    tuning: TUNING,
+    handlers: INK,
+    // Attackers always draw Ink Splat.
+    catalogue: { ...ITEM_CATALOGUE, freezeRay: { ...ITEM_CATALOGUE.freezeRay, weight: 0 } },
+  };
+  const inkGame = (players: string[], armed: string[]) => game(players, armed, { items: inkOnly });
+  const inked = (t: TestGame, id: string) => kinds(t, id).includes("inked");
+
+  it("sends the screen ink to the victim only, plus a public badge and kill feed line", () => {
+    const t = inkGame(["jay", "maya", "ben"], ["maya"]);
+    expect(held(t, "maya")).toBe("inkSplat");
+    t.drain();
+    expect(use(t, "maya")).toEqual({ ok: true });
+    const events = t.drain();
+    const ink = events.filter((e) => e.type === "fx" && (e.payload as { kind: string }).kind === "inkScreen");
+    expect(ink).toHaveLength(1);
+    expect(ink[0]!.audience).toEqual({ kind: "player", playerId: "jay" });
+    expect(ink[0]!.payload).toMatchObject({ durationMs: 6000, coverage: 0.6 });
+    expect(feed(events)).toContain("Jay got inked");
+    expect(inked(t, "jay")).toBe(true);
+    expect(t.state.players.jay!.effects[0]).toMatchObject({ kind: "inked", endsAt: t.clock.now() + 6000 });
+    // It doesn't stop shooting, and it ends after 6 s.
+    expect(t.shoot("jay", 0, 0.1)).toEqual({ ok: true });
+    t.advance(6100);
+    expect(inked(t, "jay")).toBe(false);
+  });
+
+  it("can't hit a Frozen Player, even after immunity", () => {
+    // Middle Standing draws attack (Freeze Ray), last draws chaos (Ink Splat, moved to that column here).
+    const mixed = {
+      tuning: { ...TUNING, odds: { ...TUNING.odds, last: { self: 0, attack: 0, chaos: 100 } } },
+      handlers: INK,
+      catalogue: { ...ITEM_CATALOGUE, inkSplat: { ...ITEM_CATALOGUE.inkSplat, category: "chaos" as const } },
+    };
+    const t = game(["jay", "maya", "ann"], ["maya", "ann"], { items: mixed });
+    expect(held(t, "maya")).toBe("freezeRay");
+    expect(held(t, "ann")).toBe("inkSplat");
+    use(t, "maya", "jay");
+    t.advance(IMMUNITY_MS + 100);
+    expect(use(t, "ann", "jay")).toEqual({ ok: false, reason: "untargetable" });
+    expect(held(t, "ann")).toBe("inkSplat");
+    expect(inked(t, "jay")).toBe(false);
+  });
+
+  it("a Shield eats it: no ink, no Item Hit", () => {
+    // Jay (1st Standing) draws a Shield; Maya's attack draw is Ink Splat.
+    const t = inkGame(["jay", "maya"], ["jay", "maya"]);
+    expect(held(t, "jay")).toBe("shield");
+    use(t, "jay");
+    t.drain();
+    use(t, "maya", "jay");
+    const events = t.drain();
+    expect(inked(t, "jay")).toBe(false);
+    expect(events.some((e) => e.type === "fx" && (e.payload as { kind: string }).kind === "inkScreen")).toBe(false);
+    expect(hitsLog(t).map((e) => e.kind)).toEqual(["blocked"]);
+    expect(feed(events).join("|")).toContain("Shield ate");
+  });
+
+  it("counts as an Item Hit when it lands", () => {
+    const t = inkGame(["jay", "maya"], ["maya"]);
+    use(t, "maya");
+    expect(hitsLog(t)).toMatchObject([{ kind: "hit", userId: "maya", targetId: "jay", item: "inkSplat" }]);
+  });
+});

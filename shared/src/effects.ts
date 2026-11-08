@@ -13,7 +13,7 @@
 import type { PlayerState } from "./state";
 
 /** Every Effect kind. Tickets 16-21 add theirs here. */
-export type EffectKind = "frozen" | "shielded";
+export type EffectKind = "frozen" | "shielded" | "inked";
 
 export interface EffectInfo {
   kind: EffectKind;
@@ -27,6 +27,7 @@ export interface EffectInfo {
 
 export const EFFECT_INFO: { readonly [K in EffectKind]: EffectInfo } = {
   frozen: { kind: "frozen", name: "Frozen", icon: "🧊", disabling: true },
+  inked: { kind: "inked", name: "Inked", icon: "🦑", disabling: true },
   shielded: { kind: "shielded", name: "Shielded", icon: "🛡️", disabling: false },
 };
 

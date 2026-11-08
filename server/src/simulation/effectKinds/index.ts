@@ -1,5 +1,6 @@
 import type { EffectRegistry } from "../effects";
 import { frozen } from "./frozen";
+import { inked } from "./inked";
 import { shielded } from "./shielded";
 
 /**
@@ -10,5 +11,6 @@ import { shielded } from "./shielded";
  */
 export const EFFECT_DEFINITIONS: EffectRegistry = {
   frozen,
+  inked,
   shielded,
 };

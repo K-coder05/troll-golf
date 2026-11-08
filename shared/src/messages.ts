@@ -87,6 +87,7 @@ export interface HoleMessage {
  * `itemBox`: an Item Box shattered at (x, y) (it never says what was inside).
  * `itemUse`: `item` was used at (x, y); the client's renderer for that Item plays it.
  * `shieldPop`: a Shield absorbed an attack at (x, y) (the ball's spot).
+ * `inkScreen`: sent to the victim of Ink Splat ONLY; their screen fills with ink.
  * `thaw`: a Freeze ended at (x, y): the ice cracks.
  */
 export interface FxMessage {
@@ -104,13 +105,17 @@ export interface FxMessage {
     | "itemBox"
     | "itemUse"
     | "shieldPop"
-    | "thaw";
+    | "thaw"
+    | "inkScreen";
   x: number;
   y: number;
   /** `itemUse` and `shieldPop`: which Item. */
   item?: ItemId;
   /** `itemUse` of a targeted Item, `shieldPop`, `thaw`: whose ball. */
   targetId?: string;
+  /** `inkScreen` (the victim only): how long the ink lasts, ms, and the fraction of the screen it covers. */
+  durationMs?: number;
+  coverage?: number;
 }
 
 /**
