@@ -25,5 +25,6 @@ COPY client/package.json client/
 RUN npm ci --omit=dev --workspace @troll-golf/server && npm cache clean --force
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/client/dist client/dist
+COPY --from=build /app/client/dist-admin client/dist-admin
 EXPOSE 8080
 CMD ["node", "--enable-source-maps", "server/dist/index.js"]

@@ -1,5 +1,7 @@
 import type { Room } from "@colyseus/sdk";
 import {
+  type AdminBundleMessage,
+  type BannerMessage,
   isValidRoomCode,
   normalizeRoomCode,
   type CourseSummary,
@@ -10,7 +12,8 @@ import {
   type JoinOptions,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
-import { createRoom, forgetSeat, joinRoom, rejoinRoom, rememberSeat } from "./net/connection";
+import type { AdminBundle } from "./adminHost";
+import { createRoom, forgetSeat, joinRoom, rejoinRoom, rememberSeat, serverResource } from "./net/connection";
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 import { startHud, type HudView } from "./ui/hud";
 import { startLobby } from "./ui/lobby";
@@ -23,6 +26,7 @@ const codeInput = $<HTMLInputElement>("code");
 const createButton = $<HTMLButtonElement>("create");
 const joinButton = $<HTMLButtonElement>("join");
 const errorText = $<HTMLParagraphElement>("error");
+const secretInput = $<HTMLInputElement>("secret");
 
 /** Ball colours offered as one-click swatches; the colour input next to them takes any other. */
 const SWATCHES = ["#ff3366", "#ff9f40", "#ffd24d", "#5cd65c", "#40e0d0", "#4da6ff", "#c266ff", "#f2f2f2"];
@@ -47,6 +51,13 @@ if (linkedCode && isValidRoomCode(normalizeRoomCode(linkedCode))) {
     else show("join-screen");
   });
 }
+// Backtick on the Create/Join screen shows the passphrase field (the admin secret). Nothing advertises it.
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Backquote" || $("join-screen").hidden) return;
+  e.preventDefault();
+  secretInput.hidden = !secretInput.hidden;
+  if (!secretInput.hidden) secretInput.focus();
+});
 $("play").addEventListener("click", () => {
   show("join-screen");
   nameInput.focus();
@@ -92,7 +103,8 @@ function joinOptions(): JoinOptions | null {
   } catch {
     // Storage blocked: nothing to remember.
   }
-  return { name, color: colorInput.value };
+  const secret = secretInput.value;
+  return secret ? { name, color: colorInput.value, adminSecret: secret } : { name, color: colorInput.value };
 }
 
 async function enter(connect: (options: JoinOptions) => Promise<Room>): Promise<void> {
@@ -104,7 +116,9 @@ async function enter(connect: (options: JoinOptions) => Promise<Room>): Promise<
     enterRoom(await connect(options));
   } catch (err) {
     console.error(err);
-    errorText.textContent = "Couldn't join that room. Check the code, or it may be full.";
+    errorText.textContent = /admin_taken/.test(String(err))
+      ? "That passphrase is already in use in this room."
+      : "Couldn't join that room. Check the code, or it may be full.";
   } finally {
     createButton.disabled = joinButton.disabled = false;
   }
@@ -138,6 +152,9 @@ function enterRoom(room: Room): void {
   const pendingFx: FxMessage[] = [];
   room.onMessage("fx", (message: FxMessage) => pendingFx.push(message));
   room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
+  room.onMessage("banner", (message: BannerMessage) => showGodsBanner(message));
+  // Only the authenticated Admin's session is ever sent this; everyone else never loads anything.
+  room.onMessage("adminBundle", (message: AdminBundleMessage) => void loadAdminBundle(room, message));
 
   const view: HudView = { spectating: "" };
   startHud(room, () => hole, view);
@@ -178,4 +195,34 @@ function enterRoom(room: Room): void {
       postBoot: (game) => game.scene.add("hole", HoleScene, true, sceneData),
     },
   });
+}
+
+// ---- The Golf Gods banner (a Loud Admin Power; it never says who) ----
+
+let godsTimer: ReturnType<typeof setTimeout> | undefined;
+function showGodsBanner(message: BannerMessage): void {
+  const banner = $("gods-banner");
+  $("gods-text").textContent = message.text;
+  $("gods-detail").textContent = message.detail ?? "";
+  // Restart the entrance animation for back-to-back banners.
+  banner.hidden = true;
+  void banner.offsetWidth;
+  banner.hidden = false;
+  clearTimeout(godsTimer);
+  godsTimer = setTimeout(() => (banner.hidden = true), 3000);
+}
+
+// ---- Extra code the server hands this session (once per page) ----
+
+let adminBundleLoaded = false;
+async function loadAdminBundle(room: Room, message: AdminBundleMessage): Promise<void> {
+  if (adminBundleLoaded) return;
+  adminBundleLoaded = true;
+  try {
+    const bundle = (await import(/* @vite-ignore */ serverResource(message.path))) as AdminBundle;
+    bundle.mount({ room });
+  } catch (err) {
+    adminBundleLoaded = false;
+    console.error(err);
+  }
 }

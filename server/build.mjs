@@ -15,5 +15,6 @@ await build({
   format: "esm",
   target: "node24",
   sourcemap: true,
-  external,
+  // Only used to build the admin bundle on demand in development (see src/admin/bundle.ts).
+  external: [...external, "esbuild"],
 });

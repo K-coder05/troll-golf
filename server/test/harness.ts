@@ -1,4 +1,4 @@
-import type { CourseData, GameSettings } from "@troll-golf/shared";
+import type { AdminMode, AdminPowerId, AdminPowerParams, CourseData, GameSettings } from "@troll-golf/shared";
 import { placeholderCourse } from "../src/courses/placeholder";
 import {
   COUNTDOWN_MS,
@@ -51,6 +51,21 @@ export class TestGame {
 
   join(playerId: string, name = playerId, color = "#ffffff"): IntentResult {
     return this.send(playerId, { type: "join", name, color });
+  }
+
+  /** Join with the admin secret already checked by the adapter. */
+  joinAsAdmin(playerId: string, name = playerId, color = "#ffffff"): IntentResult {
+    return this.send(playerId, { type: "join", name, color, admin: true });
+  }
+
+  /** Use an Admin Power from `playerId`'s session (Stealth unless told otherwise). */
+  adminPower<K extends AdminPowerId>(
+    playerId: string,
+    power: K,
+    params: AdminPowerParams[K],
+    mode: AdminMode = "stealth",
+  ): IntentResult {
+    return this.send(playerId, { type: "admin", power, mode, params });
   }
 
   /** Start the game from the lobby (as the first Player, the room creator) and wait out the 3-2-1, so shots are allowed. */
@@ -108,6 +123,11 @@ export class TestGame {
 
   drain(): GameEvent[] {
     return this.game.drainEvents();
+  }
+
+  /** Drained events that may reach anyone but the Admin (everyone + addressed to a Player). */
+  static nonAdmin(events: GameEvent[]): GameEvent[] {
+    return events.filter((e) => e.audience.kind !== "admin");
   }
 
   /** Drained events a given Player's screen would receive (everyone + addressed to them). */

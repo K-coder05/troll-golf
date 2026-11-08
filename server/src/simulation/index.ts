@@ -15,6 +15,15 @@ export {
   type CreateGameOptions,
 } from "./game";
 export type { Intent, IntentResult, IntentRejection } from "./intents";
+export type {
+  AdminIntent,
+  AdminLogEntry,
+  AdminPowerContext,
+  AdminPowerHandler,
+  AdminPowerOutcome,
+  AdminPowerRegistry,
+} from "./admin";
+export { ADMIN_POWERS } from "./powers";
 export { everyone, toPlayer, toAdmin, type Audience, type GameEvent } from "./events";
 export { createSeededRng, mathRandomRng, type Rng } from "./random";
 export { ManualClock, systemClock, type Clock } from "./clock";

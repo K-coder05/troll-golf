@@ -118,6 +118,17 @@
       #scoreboard td.over { color: #ffb080; }
       #scoreboard .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
       #scoreboard-footer { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 14px; }
+      #gods-banner {
+        position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%); z-index: 15; pointer-events: none;
+        padding: 14px 28px; border-radius: 12px; text-align: center; white-space: nowrap;
+        background: linear-gradient(180deg, rgba(60,40,0,0.85), rgba(20,10,0,0.85)); border: 2px solid var(--accent);
+        box-shadow: 0 0 40px rgba(255,210,77,0.5); animation: gods-in 0.35s ease-out;
+      }
+      #gods-text { font-size: 32px; font-weight: 800; color: var(--accent); text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+      #gods-detail { margin-top: 4px; font-size: 16px; color: var(--text); }
+      #gods-detail:empty { display: none; }
+      @keyframes gods-in { from { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
+      @media (max-width: 600px) { #gods-text { font-size: 20px; } #gods-banner { white-space: normal; width: calc(100% - 32px); } }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -141,6 +152,7 @@
         <button id="create" type="button">Create room</button>
         <div class="divider">or join friends</div>
         <label>Room code <input id="code" maxlength="4" placeholder="GOLF" /></label>
+        <input id="secret" type="password" autocomplete="off" aria-label="Passphrase" placeholder="•••" hidden />
         <div class="row"><button id="join" type="submit" class="secondary">Join room</button></div>
         <p id="error" role="alert"></p>
       </form>
@@ -170,6 +182,7 @@
     <div id="spectate" hidden></div>
     <div id="connection" hidden>Connection lost · reconnecting…</div>
     <div id="banner" hidden></div>
+    <div id="gods-banner" hidden><div id="gods-text"></div><div id="gods-detail"></div></div>
     <div id="scoreboard" hidden>
       <div class="panel">
         <h2 id="scoreboard-title"></h2>

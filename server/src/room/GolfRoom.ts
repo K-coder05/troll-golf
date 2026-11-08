@@ -1,5 +1,7 @@
 import { Room, type Client } from "@colyseus/core";
 import { MAX_PLAYERS, type JoinOptions } from "@troll-golf/shared";
+import { isAdminSecret } from "../admin/auth";
+import { adminBundlePath, issueAdminBundleToken } from "../admin/bundle";
 import { courses, defaultCourse } from "../courses";
 import { createGame, mathRandomRng, systemClock, type Game, type GameEvent } from "../simulation";
 import { claimRoomCode, releaseRoomCode } from "./roomCodes";
@@ -27,6 +29,8 @@ export const RECONNECT_WINDOW_SEC = { lobby: 30, game: 20 * 60 } as const;
 export class GolfRoom extends Room<{ state: RoomStateSchema }> {
   override maxClients = MAX_PLAYERS;
   private game!: Game;
+  /** How many Admin Power log entries have been written to the server log. */
+  private adminLogWritten = 0;
 
   override onCreate(): void {
     const code = claimRoomCode();
@@ -52,20 +56,36 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
       this.game.handleIntent(client.sessionId, { type: "start" });
       this.flush();
     });
+    // Admin Powers: the simulation checks that the sender is the Admin and validates everything.
+    this.onMessage("admin", (client, message: unknown) => {
+      const { power, mode, params } = (message ?? {}) as { power?: unknown; mode?: unknown; params?: unknown };
+      this.game.handleIntent(client.sessionId, { type: "admin", power: String(power), mode: String(mode), params });
+      this.flush();
+    });
 
     this.setPatchRate(PATCH_MS);
     this.setSimulationInterval((dtMs) => this.tick(dtMs), STEP_MS);
   }
 
   override onJoin(client: Client, options?: Partial<JoinOptions>): void {
-    // Admin authentication (options.adminSecret vs an env var) arrives in ticket 09.
+    // Admin authentication: the right secret makes this session the Admin; a
+    // wrong one joins as an ordinary Player, with no sign that it was tried.
+    const admin = isAdminSecret(options?.adminSecret);
     const result = this.game.handleIntent(client.sessionId, {
       type: "join",
       name: String(options?.name ?? ""),
       color: String(options?.color ?? ""),
+      admin,
     });
     if (!result.ok) throw new Error(`Join refused: ${result.reason}`);
     this.flush();
+    if (admin) this.sendAdminBundle(client);
+  }
+
+  /** Only the Admin's session learns where the admin bundle is, with a one-time token. */
+  private sendAdminBundle(client: Client): void {
+    if (this.game.getAdminId() !== client.sessionId) return;
+    client.send("adminBundle", { path: adminBundlePath(issueAdminBundleToken()) });
   }
 
   /**
@@ -86,6 +106,8 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
   override onReconnect(client: Client): void {
     this.game.handleIntent(client.sessionId, { type: "reconnect" });
     this.flush();
+    // Same session, so still the Admin. A reloaded page needs the bundle again (the client loads it once per page).
+    this.sendAdminBundle(client);
   }
 
   /** A consented leave, or a drop whose reconnection window ran out: gone for good. */
@@ -103,10 +125,14 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     this.flush();
   }
 
-  /** Mirror state into the schema and deliver pending events. */
+  /** Mirror state into the schema, deliver pending events and write new Admin Power uses to the server log. */
   private flush(): void {
     syncState(this.state, this.game.getState());
     for (const event of this.game.drainEvents()) this.deliver(event);
+    const log = this.game.getAdminLog();
+    while (this.adminLogWritten < log.length) {
+      console.info(`[admin-log] room=${this.roomId} ${JSON.stringify(log[this.adminLogWritten++])}`);
+    }
   }
 
   private deliver(event: GameEvent): void {
@@ -114,8 +140,11 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
       all: this.clients,
       // Player ids are Colyseus session ids. A reconnecting client keeps its session id, so its Player.
       forPlayer: (playerId) => this.clients.find((c) => c.sessionId === playerId),
-      // No Admin until ticket 09, so admin-only events are dropped.
-      admin: () => undefined,
+      // Admin-only events go to the Admin's connection or nowhere.
+      admin: () => {
+        const adminId = this.game.getAdminId();
+        return adminId === null ? undefined : this.clients.find((c) => c.sessionId === adminId);
+      },
     });
     for (const client of targets) client.send(event.type, event.payload);
   }

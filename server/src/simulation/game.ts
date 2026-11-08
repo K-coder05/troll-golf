@@ -10,10 +10,12 @@ import {
   type RoomState,
   type Vec2,
 } from "@troll-golf/shared";
+import { createAdminPowers, type AdminLogEntry } from "./admin";
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
 import { PHYSICS_STEP_MS, PhysicsWorld } from "./physics";
+import { ADMIN_POWERS } from "./powers";
 import type { Rng } from "./random";
 import { courseSurfaces, isHazard, pointInPolygon, shotPowerFactor, SURFACE_DAMPING } from "./surfaces";
 
@@ -90,6 +92,13 @@ export interface Game {
   getState(): Readonly<RoomState>;
   /** Outbound events since the last drain, oldest first, each tagged with its audience. */
   drainEvents(): GameEvent[];
+  /**
+   * The Admin's Player id, or null. Server-only: the adapter uses it to route
+   * admin-audience events and hand out the admin bundle. Never synced.
+   */
+  getAdminId(): string | null;
+  /** Every Admin Power use so far, oldest first, timestamped. Server-only, never synced. */
+  getAdminLog(): readonly AdminLogEntry[];
 }
 
 /**
@@ -179,6 +188,8 @@ export function createGame(options: CreateGameOptions): Game {
   const presentThisHole = new Set<string>();
 
   const emit = (event: GameEvent) => events.push(event);
+  // The secret Admin and the Admin Power pipeline. Server-only: nothing in here reaches RoomState.
+  const admin = createAdminPowers({ registry: ADMIN_POWERS, clock, state, emit, updateStandings: () => updateStandings() });
 
   function newPhysicsWorld(): PhysicsWorld {
     return new PhysicsWorld({
@@ -435,16 +446,20 @@ export function createGame(options: CreateGameOptions): Game {
   }
 
   /**
-   * A new Player. In the lobby, or during the 3-2-1 before a Hole (nothing
+   * A new Player (the Admin too: they join exactly like everyone else, and
+   * every event about the join is the same). In the lobby, or during the 3-2-1 before a Hole (nothing
    * has been played yet), they go straight onto the Tee. Once a Hole is being
    * played or is over, they're a late joiner: they spectate until the next
    * Hole starts, and every Hole up to and including the current one is scored
    * at its stroke cap (Par + strokeCapOverPar) right away, so Standing counts
    * it. Joining after the last Hole means watching the final results.
    */
-  function join(playerId: string, name: string, color: string): IntentResult {
+  function join(playerId: string, name: string, color: string, asAdmin: boolean): IntentResult {
     if (state.players[playerId]) return { ok: false, reason: "already_joined" };
     if (seatsTaken() >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    if (asAdmin && admin.adminId !== null) return { ok: false, reason: "admin_taken" };
+    // From here on the Admin is an ordinary Player in every respect except admin.isAdmin().
+    if (asAdmin) admin.claim(playerId);
 
     const late = state.phase === "playing" || state.phase === "holeEnd" || state.phase === "gameEnd";
     const spot = late ? { ...currentHole().tee } : teeSpot(ballsOnCourse());
@@ -530,6 +545,8 @@ export function createGame(options: CreateGameOptions): Game {
       if (physics.hasBall(playerId)) removeBody(player);
       gone.add(playerId);
     }
+    // An Admin who is gone for good frees the role for someone else with the secret.
+    admin.release(playerId);
     emit({ type: "feed", payload: { text: `${player.name} left` }, audience: everyone });
     if (state.creatorId === playerId) {
       // The longest-present Player still in the game takes over running the lobby.
@@ -725,7 +742,7 @@ export function createGame(options: CreateGameOptions): Game {
     handleIntent(playerId, intent) {
       switch (intent.type) {
         case "join":
-          return join(playerId, intent.name, intent.color);
+          return join(playerId, intent.name, intent.color, intent.admin === true);
         case "leave":
           return leave(playerId);
         case "disconnect":
@@ -738,6 +755,8 @@ export function createGame(options: CreateGameOptions): Game {
           return configure(playerId, intent.courseId);
         case "shoot":
           return shoot(playerId, intent.angle, intent.power);
+        case "admin":
+          return admin.use(playerId, intent);
         default:
           return { ok: false, reason: "invalid_payload" };
       }
@@ -764,6 +783,12 @@ export function createGame(options: CreateGameOptions): Game {
       const drained = events;
       events = [];
       return drained;
+    },
+    getAdminId() {
+      return admin.adminId;
+    },
+    getAdminLog() {
+      return admin.log;
     },
   };
 }

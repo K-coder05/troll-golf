@@ -14,6 +14,11 @@ function serverUrl(): string {
 
 const client = new Client(serverUrl());
 
+/** A path on the game server (e.g. one the server sent) as a full URL. */
+export function serverResource(path: string): string {
+  return new URL(path, serverUrl()).href;
+}
+
 export function createRoom(options: JoinOptions): Promise<Room> {
   return client.create(ROOM_NAME, options);
 }

@@ -6,6 +6,7 @@
  * is also the Colyseus message name.
  */
 
+import type { AdminBundleMessage, AdminMessage, AdminResultMessage, BannerMessage } from "./admin";
 import type { HoleData } from "./course";
 
 /** The single Colyseus room type. */
@@ -15,7 +16,11 @@ export const ROOM_NAME = "golf";
 export interface JoinOptions {
   name: string;
   color: string;
-  /** Admin secret (ticket 09). Checked by the adapter, never stored in state. */
+  /**
+   * The admin secret, if this Player claims to be the Admin. The adapter
+   * compares it with the ADMIN_SECRET env var; a wrong one joins as an
+   * ordinary Player. Never stored in state.
+   */
   adminSecret?: string;
 }
 
@@ -41,6 +46,8 @@ export interface ClientMessages {
   shoot: ShootMessage;
   configure: ConfigureMessage;
   start: StartMessage;
+  /** Use an Admin Power (the Admin's session only). */
+  admin: AdminMessage;
 }
 
 export type ClientMessageType = keyof ClientMessages;
@@ -96,6 +103,12 @@ export interface CoursesMessage {
 }
 
 export interface ServerMessages {
+  /** Admin only: where to load the admin client bundle. Sent by the adapter, never by the simulation. */
+  adminBundle: AdminBundleMessage;
+  /** Admin only: the outcome of an Admin Power use. */
+  adminResult: AdminResultMessage;
+  /** Everyone: the Golf Gods banner of a Loud Admin Power. */
+  banner: BannerMessage;
   courses: CoursesMessage;
   feed: FeedMessage;
   fx: FxMessage;

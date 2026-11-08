@@ -1,12 +1,18 @@
+import type { AdminIntent } from "./admin";
+
 /**
  * Everything a session can ask the simulation to do. The adapter turns
  * network messages and connection events into these; the simulation decides
  * whether they are allowed.
  *
- * Later tickets add useItem, emote and admin here.
+ * Later tickets add useItem and emote here.
  */
 export type Intent =
-  | { type: "join"; name: string; color: string }
+  /**
+   * `admin`: the adapter already checked the admin secret. At most one Admin
+   * per room; a second is refused (`admin_taken`).
+   */
+  | { type: "join"; name: string; color: string; admin?: boolean }
   /**
    * The Player is gone for good (a consented leave, or their reconnection
    * window ran out). In the lobby they are removed; mid-game their ball and
@@ -22,7 +28,12 @@ export type Intent =
   /** Change lobby settings (room creator only, lobby only). Ticket 24 adds chaosLevel. */
   | { type: "configure"; courseId?: string }
   /** angle: radians, direction of travel (0 = +x, clockwise on screen). power: 0..1 of max. */
-  | { type: "shoot"; angle: number; power: number };
+  | { type: "shoot"; angle: number; power: number }
+  /**
+   * Use an Admin Power. Untrusted: the simulation checks that the sender is
+   * the Admin and validates power, mode and params (see admin.ts).
+   */
+  | AdminIntent;
 
 export type IntentRejection =
   | "room_full"
@@ -46,6 +57,14 @@ export type IntentRejection =
   /** A reconnect from a Player who already left the game for good. */
   | "left_game"
   /** A late joiner waiting for the next Hole has no ball on the course. */
-  | "spectating";
+  | "spectating"
+  /** The room already has an Admin. */
+  | "admin_taken"
+  /** An admin intent from anyone but the Admin. */
+  | "not_admin"
+  /** No such Admin Power. */
+  | "unknown_power"
+  /** An Admin Power aimed at a Player who isn't in the room. */
+  | "unknown_target";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

@@ -27,12 +27,16 @@ npm run dev        # server on :2567 (tsx watch) + client on http://localhost:51
 
 Open http://localhost:5173 in two or more browsers. Press Play, pick a nickname and ball colour, and create a room in one; enter its 4-letter code in the others (a link like `http://localhost:5173/?room=ABCD` skips the title and pre-fills the code). Everyone waits in the lobby, where the room creator picks the Course (the 3-Hole sample Course or the 1-Hole Practice Box) and presses Start. After a 3-2-1 countdown everyone plays the Hole at once: drag back from your ball and release to shoot, hold Tab to see the whole Hole and the scoreboard. Live Standings are top-right. Once you've Holed Out you spectate (click a ball to watch it; by default you follow the Leader). A Hole ends when everyone has Holed Out or the 90 s timer runs out, then an 8 s scoreboard shows; final results follow the last Hole. If your connection drops, your ball freezes where it is (greyed out, "offline") and the client reconnects on its own; reloading the page also brings you back as the same Player. Friends who join a game in progress spectate until the next Hole, and each Hole they missed is scored at its stroke cap.
 
+### Being the Admin
+
+Start the server with an admin secret, e.g. `ADMIN_SECRET=hunter2 npm run dev` (no secret set means nobody can be the Admin). On the Create/Join screen press the backtick key (`` ` ``) to show a passphrase field, type the secret, then create or join any room as usual. A wrong secret just joins as a normal Player; a room takes one Admin. Once in, the server sends your session (only yours) a one-time link to the admin bundle (`client/src/admin`, built separately into `client/dist-admin/`). Press backtick to open the console; keys 1–9 pick hotbar slots while it's open, and Caps Lock on means Loud (off = Stealth). Every Admin Power use is written to the server log as an `[admin-log]` JSON line.
+
 Other scripts:
 
 ```sh
 npm test           # Vitest, all packages
 npm run typecheck  # tsc in every workspace
-npm run build      # client -> client/dist, server bundle -> server/dist
+npm run build      # client -> client/dist, admin bundle -> client/dist-admin, server bundle -> server/dist
 npm start          # production server on $PORT (default 2567), serving client/dist
 ```
 
@@ -45,4 +49,4 @@ docker build -t troll-golf .
 docker run -p 8080:8080 troll-golf   # then open http://localhost:8080
 ```
 
-`fly.toml` is set up for the spec's one always-on Fly.io machine (`auto_stop_machines = "off"`, `min_machines_running = 1`). Choose an app name, then `fly launch --no-deploy` and `fly deploy`. It has not been deployed yet.
+`fly.toml` is set up for the spec's one always-on Fly.io machine (`auto_stop_machines = "off"`, `min_machines_running = 1`). Choose an app name, then `fly launch --no-deploy`, `fly secrets set ADMIN_SECRET=...` and `fly deploy`. It has not been deployed yet.

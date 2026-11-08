@@ -15,7 +15,10 @@ const PORT = 25670 + Math.floor(Math.random() * 1000);
 let server: Server;
 const rooms: Room[] = [];
 
+const ADMIN_SECRET = "golf-gods-e2e";
+
 beforeAll(async () => {
+  process.env.ADMIN_SECRET = ADMIN_SECRET;
   server = createGameServer();
   await server.listen(PORT);
 });
@@ -47,6 +50,7 @@ function listen(room: Room, feed: string[] = []): Room {
   room.onMessage("time", () => undefined);
   room.onMessage("courses", () => undefined);
   room.onMessage("fx", () => undefined);
+  room.onMessage("banner", () => undefined);
   room.onMessage("feed", (m: { text: string }) => feed.push(m.text));
   return room;
 }
@@ -168,4 +172,51 @@ describe("GolfRoom over the network", () => {
     await waitFor(() => playersOf(host).size === 8);
     await expect(newClient().joinById(host.roomId, { name: "P9", color: "#333333" })).rejects.toThrow();
   });
+
+  it("authenticates the Admin by secret, serves the admin bundle only to them, and runs Admin Powers", async () => {
+    const mayaBundle: string[] = [];
+    const mayaResults: unknown[] = [];
+    const maya = listen(track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366", adminSecret: ADMIN_SECRET })));
+    maya.onMessage("adminBundle", (m: { path: string }) => mayaBundle.push(m.path));
+    maya.onMessage("adminResult", (m: unknown) => mayaResults.push(m));
+
+    // A wrong secret joins as an ordinary Player.
+    const benOther: string[] = [];
+    const benBanners: { text: string; detail?: string }[] = [];
+    const ben = listen(track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff", adminSecret: "guess" })));
+    ben.onMessage("banner", (m: { text: string; detail?: string }) => benBanners.push(m));
+    for (const type of ["adminBundle", "adminResult"]) ben.onMessage(type, () => benOther.push(type));
+    // A second Admin in the same room is refused.
+    await expect(
+      newClient().joinById(maya.roomId, { name: "Zed", color: "#000000", adminSecret: ADMIN_SECRET }),
+    ).rejects.toThrow(/admin_taken/);
+
+    await waitFor(() => mayaBundle.length === 1);
+    const url = `http://localhost:${PORT}${mayaBundle[0]}`;
+    const bundle = await fetch(url);
+    expect(bundle.status).toBe(200);
+    expect(bundle.headers.get("content-type")).toMatch(/javascript/);
+    const source = await bundle.text();
+    expect(source).toContain("Scoreboard Edit");
+    // One-time: the same link doesn't work twice, and made-up ones never do.
+    expect((await fetch(url)).status).toBe(404);
+    expect((await fetch(`http://localhost:${PORT}/admin-bundle/${"0".repeat(48)}.js`)).status).toBe(404);
+    expect((await fetch(`http://localhost:${PORT}/admin.js`)).status).toBe(404);
+
+    maya.send("configure", { courseId: "placeholder" });
+    await waitFor(() => stateOf(ben).courseId === "placeholder");
+    maya.send("start", {});
+    await waitFor(() => stateOf(ben).phase === "playing", 5000);
+
+    // Ben's admin intent is rejected; Maya's goes through.
+    ben.send("admin", { power: "scoreboardEdit", mode: "loud", params: { targetId: maya.sessionId, delta: 5 } });
+    maya.send("admin", { power: "scoreboardEdit", mode: "loud", params: { targetId: ben.sessionId, delta: 2 } });
+    await waitFor(() => playersOf(ben).get(ben.sessionId)?.strokes[0] === 2);
+    await waitFor(() => benBanners.length === 1 && mayaResults.length === 1);
+    expect(benBanners[0]).toEqual({ text: "👑 The Golf Gods have spoken", detail: "Ben: +2 Strokes" });
+    expect(playersOf(ben).get(maya.sessionId)?.strokes[0]).toBe(0);
+    expect(mayaResults[0]).toMatchObject({ ok: true, power: "scoreboardEdit", mode: "loud" });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(benOther).toEqual([]);
+  }, 20_000);
 });
