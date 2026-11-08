@@ -12,6 +12,8 @@ import {
   windmillCorners,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
+import { SnapshotBuffer, type Point } from "../net/interpolation";
+import type { HudView } from "../ui/hud";
 
 /** The decoded synced state, as the client reads it. Mirrors RoomState with Map-like players. */
 interface SyncedPlayer {
@@ -22,6 +24,7 @@ interface SyncedPlayer {
 }
 interface SyncedState {
   phase: Phase;
+  leaderId: string;
   holeIndex: number;
   cup: CupState;
   obstacleTimeMs: number;
@@ -37,6 +40,8 @@ export interface HoleSceneData {
   hole: () => HoleMessage | null;
   /** Hands over the one-shot effects received since the last call. */
   takeFx: () => FxMessage[];
+  /** Shared with the HUD: whose ball a Holed-Out Player is watching. */
+  view: HudView;
 }
 
 interface BallSprite {
@@ -54,8 +59,8 @@ const GRAB_RADIUS = BALL_RADIUS * 4;
 const AIM_LINE_LENGTH = BALL_RADIUS * 2 * 2;
 /** World px visible across the shorter screen side while following the ball. */
 const FOLLOW_VIEW = 520;
-/** A synced jump longer than this (a new Hole, a teleport) snaps the sprite instead of easing. */
-const SNAP_DISTANCE = 150;
+/** A Holed-Out Player clicking within this distance (world px) of a ball starts watching it. */
+const PICK_RADIUS = BALL_RADIUS * 5;
 
 const COLORS = {
   fairway: 0x2f8f46,
@@ -87,6 +92,11 @@ export class HoleScene extends Phaser.Scene {
   private room!: Room;
   private holeSource!: () => HoleMessage | null;
   private takeFx!: () => FxMessage[];
+  private view!: HudView;
+  /** Ball positions from recent patches; balls are drawn ~100 ms behind, interpolated. */
+  private snapshots = new SnapshotBuffer();
+  /** Whose ball a Holed-Out Player chose to watch ("" = follow the Leader). */
+  private watchChoice = "";
 
   private drawnHole: HoleMessage | null = null;
   private course!: Phaser.GameObjects.Graphics;
@@ -112,6 +122,7 @@ export class HoleScene extends Phaser.Scene {
     this.room = data.room;
     this.holeSource = data.hole;
     this.takeFx = data.takeFx;
+    this.view = data.view;
   }
 
   create(): void {
@@ -128,9 +139,24 @@ export class HoleScene extends Phaser.Scene {
     this.escape.on("down", () => (this.aimPoint = null));
     this.input.mouse?.disableContextMenu();
 
+    // Every patch (20 Hz) is one snapshot of ball positions.
+    const record = () => {
+      const state = this.syncedState();
+      if (!state?.players) return;
+      const positions = new Map<string, Point>();
+      state.players.forEach((p, id) => positions.set(id, { x: p.ball.x, y: p.ball.y }));
+      this.snapshots.push(performance.now(), positions);
+    };
+    record();
+    this.room.onStateChange(record);
+
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) {
         this.aimPoint = null;
+        return;
+      }
+      if (this.isSpectating()) {
+        this.pickBallToWatch(this.worldPoint(pointer));
         return;
       }
       const sprite = this.balls.get(this.room.sessionId);
@@ -171,6 +197,40 @@ export class HoleScene extends Phaser.Scene {
     const state = this.syncedState();
     const me = state?.players?.get(this.room.sessionId);
     return state?.phase === "playing" && !!me && !me.holedOut && me.ball.atRest;
+  }
+
+  /** A Holed-Out Player watches the others while the Hole goes on. */
+  private isSpectating(): boolean {
+    const state = this.syncedState();
+    return state?.phase === "playing" && !!state.players.get(this.room.sessionId)?.holedOut;
+  }
+
+  private pickBallToWatch(at: Phaser.Math.Vector2): void {
+    let best = "";
+    let bestDistance = PICK_RADIUS;
+    this.syncedState()?.players.forEach((player, id) => {
+      const sprite = this.balls.get(id);
+      if (player.holedOut || !sprite) return;
+      const d = Phaser.Math.Distance.Between(at.x, at.y, sprite.circle.x, sprite.circle.y);
+      if (d < bestDistance) {
+        best = id;
+        bestDistance = d;
+      }
+    });
+    if (best) this.watchChoice = best;
+  }
+
+  /** The ball the camera follows: your own, or while spectating the chosen ball (else the Leader's). */
+  private followedId(): string {
+    const state = this.syncedState();
+    if (!state || !this.isSpectating()) {
+      this.view.spectating = "";
+      return this.room.sessionId;
+    }
+    const chosen = state.players.get(this.watchChoice);
+    const id = chosen && !chosen.holedOut ? this.watchChoice : state.leaderId;
+    this.view.spectating = id;
+    return id || this.room.sessionId;
   }
 
   private syncedState(): SyncedState | undefined {
@@ -329,14 +389,23 @@ export class HoleScene extends Phaser.Scene {
     if (!state?.players) return;
 
     const seen = new Set<string>();
+    const now = performance.now();
     state.players.forEach((player, id) => {
       seen.add(id);
       let sprite = this.balls.get(id);
       if (!sprite) {
         sprite = {
           circle: this.add.circle(player.ball.x, player.ball.y, BALL_RADIUS).setDepth(5),
+          // The name tag floating over the ball.
           label: this.add
-            .text(0, 0, "", { fontFamily: "system-ui, sans-serif", fontSize: "12px", color: "#ffffff" })
+            .text(0, 0, "", {
+              fontFamily: "system-ui, sans-serif",
+              fontSize: "12px",
+              fontStyle: "bold",
+              color: "#ffffff",
+              stroke: "#000000",
+              strokeThickness: 3,
+            })
             .setOrigin(0.5, 1)
             .setDepth(6),
         };
@@ -345,10 +414,9 @@ export class HoleScene extends Phaser.Scene {
       const isMe = id === this.room.sessionId;
       sprite.circle.setFillStyle(Phaser.Display.Color.HexStringToColor(player.color).color);
       sprite.circle.setStrokeStyle(isMe ? 2 : 1, isMe ? 0xffffff : 0x000000, isMe ? 1 : 0.5);
-      // Patches arrive at 20 Hz; ease toward the latest one (ticket 07 brings real interpolation).
-      const far = Phaser.Math.Distance.Between(sprite.circle.x, sprite.circle.y, player.ball.x, player.ball.y) > SNAP_DISTANCE;
-      sprite.circle.x = far ? player.ball.x : Phaser.Math.Linear(sprite.circle.x, player.ball.x, 0.4);
-      sprite.circle.y = far ? player.ball.y : Phaser.Math.Linear(sprite.circle.y, player.ball.y, 0.4);
+      // Every ball, yours included (no local prediction), is drawn ~100 ms behind, between patches.
+      const at = this.snapshots.sample(id, now) ?? player.ball;
+      sprite.circle.setPosition(at.x, at.y);
       sprite.label.setText(player.name).setPosition(sprite.circle.x, sprite.circle.y - BALL_RADIUS - 4);
       // A ball in the Cup is gone from the course; its Player spectates.
       sprite.circle.setVisible(!player.holedOut);
@@ -412,7 +480,7 @@ export class HoleScene extends Phaser.Scene {
     cam.useBounds = !overview && followZoom > fitZoom;
     cam.setZoom(Phaser.Math.Linear(cam.zoom, overview ? fitZoom : followZoom, 0.15));
 
-    const target = overview ? { x: hole.width / 2, y: hole.height / 2 } : this.balls.get(this.room.sessionId)?.circle;
+    const target = overview ? { x: hole.width / 2, y: hole.height / 2 } : this.balls.get(this.followedId())?.circle;
     if (target) {
       this.camCenter.x = Phaser.Math.Linear(this.camCenter.x, target.x, 0.12);
       this.camCenter.y = Phaser.Math.Linear(this.camCenter.y, target.y, 0.12);

@@ -14,9 +14,9 @@ npm workspaces, all TypeScript:
 | `shared/` | State, course data and message types used by both sides, and room-code helpers. Consumed as TypeScript source. |
 | `server/` | `src/simulation/`: the Game simulation (framework-free, owns every rule). `src/room/`: the thin Colyseus adapter. `src/app.ts`: HTTP + WebSocket server that also serves the built client. |
 | `tools/` | Dev tooling. `npm run convert-course` turns Tiled maps into course data; see `docs/course-authoring.md`. The sample Course's maps are in `server/src/courses/sample/`; `npm run convert-sample-course` rebuilds `server/src/courses/sample.json`. |
-| `client/` | Phaser + Vite browser client. It renders synced state and sends intents. |
+| `client/` | Phaser + Vite browser client. DOM screens for Title, Create/Join, Lobby and the HUD; a Phaser scene for the Hole. It renders synced state (balls interpolated ~100 ms behind) and sends intents. |
 
-Tests live in `server/test/` (simulation scenarios through `test/harness.ts`, plus a WebSocket smoke test) and next to shared code.
+Tests live in `server/test/` (simulation scenarios through `test/harness.ts`, plus a WebSocket smoke test) and next to shared and client code (`client/src/net/interpolation.test.ts`).
 
 ## Run it
 
@@ -25,7 +25,7 @@ npm install
 npm run dev        # server on :2567 (tsx watch) + client on http://localhost:5173 (Vite)
 ```
 
-Open http://localhost:5173 in two browsers. Create a room in one, enter its 4-letter code in the other. Creating the room starts a 3-Hole round of the sample Course (no lobby screen yet): a 3-2-1 countdown, then drag back from your ball and release to shoot, hold Tab to see the whole Hole. A Hole ends when everyone has Holed Out or the 90 s timer runs out, then an 8 s scoreboard shows; final results follow the last Hole. A link like `http://localhost:5173/?room=ABCD` pre-fills the code.
+Open http://localhost:5173 in two or more browsers. Press Play, pick a nickname and ball colour, and create a room in one; enter its 4-letter code in the others (a link like `http://localhost:5173/?room=ABCD` skips the title and pre-fills the code). Everyone waits in the lobby, where the room creator picks the Course (the 3-Hole sample Course or the 1-Hole Practice Box) and presses Start. After a 3-2-1 countdown everyone plays the Hole at once: drag back from your ball and release to shoot, hold Tab to see the whole Hole and the scoreboard. Live Standings are top-right. Once you've Holed Out you spectate (click a ball to watch it; by default you follow the Leader). A Hole ends when everyone has Holed Out or the 90 s timer runs out, then an 8 s scoreboard shows; final results follow the last Hole.
 
 Other scripts:
 

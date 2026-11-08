@@ -12,6 +12,10 @@ _Avoid_: User, client, golfer
 The one secret Player who can use Admin Powers. Other Players don't know who it is during play.
 _Avoid_: Host, GM, Golf God (that's the public face, not the role)
 
+**Room creator**:
+The Player who created the Room. They run the lobby: pick the Course (and later the chaos level) and start the game. If they leave, the Player who has been in the Room longest takes over. It is public and has nothing to do with the Admin.
+_Avoid_: Host, owner
+
 **Golf Gods**:
 The anonymous name the game shows when an Admin Power is used Loud. It never says who the Admin is.
 _Avoid_: Admin (in any player-facing text)

@@ -17,14 +17,59 @@
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
       #game { position: fixed; inset: 0; }
-      #lobby {
-        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+      .screen {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow-y: auto;
+        background: var(--bg);
       }
-      #lobby form {
-        width: min(360px, 100%); display: grid; gap: 12px; padding: 24px;
+      .card {
+        width: min(380px, 100%); display: grid; gap: 12px; padding: 24px;
         background: var(--panel); border-radius: 12px;
       }
       h1 { margin: 0 0 4px; font-size: 28px; }
+      h2 { margin: 0; font-size: 20px; }
+      #title { text-align: center; }
+      #title h1 { font-size: 56px; letter-spacing: 0.02em; }
+      #title p { margin: 0 0 8px; color: var(--muted); }
+      #title .card { background: transparent; }
+      .divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+      .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid #3d6b49; }
+      .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .swatch {
+        flex: none; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid transparent;
+        cursor: pointer;
+      }
+      .swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--bg) inset; }
+      .swatches input[type="color"] { width: 36px; height: 30px; padding: 0; border: 0; background: none; }
+      .lobby-code { font-size: 40px; font-weight: 800; letter-spacing: 0.25em; color: var(--accent); text-align: center; }
+      .lobby-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+      .lobby-head span { color: var(--muted); font-size: 14px; }
+      #lobby-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+      #lobby-players li {
+        display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: #0e2416;
+      }
+      #lobby-players .dot, #standings .dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; }
+      .tag { margin-left: auto; font-size: 12px; color: var(--muted); }
+      select { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d6b49; background: #0e2416; color: var(--text); }
+      #lobby-course-name { padding: 8px 0; font-weight: 600; }
+      #lobby-wait { margin: 0; text-align: center; color: var(--muted); font-size: 14px; }
+      #standings {
+        position: fixed; top: 12px; right: 12px; min-width: 180px; max-width: 45%; padding: 6px 10px; border-radius: 6px;
+        background: rgba(0,0,0,0.45); font-size: 13px; pointer-events: none; font-variant-numeric: tabular-nums;
+      }
+      #standings table { border-collapse: collapse; width: 100%; }
+      #standings td { padding: 1px 4px; white-space: nowrap; }
+      #standings td.name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+      #standings td.num { text-align: right; }
+      #standings tr.me td { color: var(--accent); }
+      #standings tr.out td { opacity: 0.6; }
+      #spectate {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); pointer-events: none;
+        padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,0.55); font-size: 14px; white-space: nowrap;
+      }
+      @media (max-width: 600px) {
+        #standings { top: auto; bottom: 12px; }
+        #spectate { bottom: auto; top: 64px; }
+      }
       label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
       input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d6b49; background: #0e2416; color: var(--text); }
       input[type="color"] { padding: 2px; height: 40px; }
@@ -72,23 +117,51 @@
   </head>
   <body>
     <div id="game"></div>
-    <div id="lobby">
-      <form id="join-form" autocomplete="off">
+    <section id="title" class="screen">
+      <div class="card">
+        <h1>Troll Golf</h1>
+        <p>Mini-golf with friends. Sabotage encouraged.</p>
+        <button id="play" type="button">Play</button>
+      </div>
+    </section>
+    <section id="join-screen" class="screen" hidden>
+      <form id="join-form" class="card" autocomplete="off">
         <h1>Troll Golf</h1>
         <label>Nickname <input id="name" maxlength="16" required placeholder="Maya" /></label>
-        <label>Ball colour <input id="color" type="color" value="#ff3366" /></label>
+        <div>
+          <label for="color">Ball colour</label>
+          <div class="swatches" id="swatches"><input id="color" type="color" value="#ff3366" title="Pick any colour" /></div>
+        </div>
         <button id="create" type="button">Create room</button>
+        <div class="divider">or join friends</div>
         <label>Room code <input id="code" maxlength="4" placeholder="GOLF" /></label>
         <div class="row"><button id="join" type="submit" class="secondary">Join room</button></div>
         <p id="error" role="alert"></p>
       </form>
-    </div>
+    </section>
+    <section id="lobby-screen" class="screen" hidden>
+      <div class="card">
+        <div class="lobby-head"><h2>Lobby</h2><span id="lobby-count"></span></div>
+        <div class="lobby-code" id="lobby-code"></div>
+        <button id="copy-link" type="button" class="secondary">Copy invite link</button>
+        <ul id="lobby-players"></ul>
+        <label>Course
+          <select id="lobby-course"></select>
+        </label>
+        <div id="lobby-course-name"></div>
+        <button id="start" type="button">Start game</button>
+        <p id="lobby-wait"></p>
+        <button id="leave" type="button" class="secondary">Leave</button>
+      </div>
+    </section>
     <div id="hud" hidden>
       <div id="hole-info"></div>
       <div class="hint">Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
-      <div class="hint">Drag back from your ball and release to shoot · hold Tab to see the whole Hole</div>
+      <div class="hint">Drag back from your ball and release to shoot · hold Tab to see the whole Hole and the scoreboard</div>
     </div>
     <div id="timer" hidden></div>
+    <div id="standings" hidden><table id="standings-table"></table></div>
+    <div id="spectate" hidden></div>
     <div id="banner" hidden></div>
     <div id="scoreboard" hidden>
       <div class="panel">

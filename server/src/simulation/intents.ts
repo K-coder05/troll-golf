@@ -8,12 +8,10 @@
 export type Intent =
   | { type: "join"; name: string; color: string }
   | { type: "leave" }
-  /**
-   * Start the game from the lobby. For now any Player may start it and the
-   * adapter sends it on the first join; ticket 07 limits it to the room
-   * creator's Start button.
-   */
+  /** Start the game from the lobby. Only the room creator (state.creatorId) may. */
   | { type: "start" }
+  /** Change lobby settings (room creator only, lobby only). Ticket 24 adds chaosLevel. */
+  | { type: "configure"; courseId?: string }
   /** angle: radians, direction of travel (0 = +x, clockwise on screen). power: 0..1 of max. */
   | { type: "shoot"; angle: number; power: number };
 
@@ -27,6 +25,10 @@ export type IntentRejection =
   /** Not allowed in the current phase (e.g. a shot during the countdown, a start mid-game). */
   | "wrong_phase"
   /** The Player's ball is already in the Cup. */
-  | "holed_out";
+  | "holed_out"
+  /** Only the room creator may change lobby settings or start the game. */
+  | "not_creator"
+  /** No such Course in this room's catalogue. */
+  | "unknown_course";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

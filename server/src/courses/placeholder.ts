@@ -13,11 +13,12 @@ const rect = (x: number, y: number, w: number, h: number): Polygon => [
 
 /**
  * A one-Hole walled box with a block in the middle, so the straight line to
- * the Cup needs a bank shot. Stand-in until converted Courses are loaded (ticket 05).
+ * the Cup needs a bank shot. Offered in the lobby as the one-Hole "Practice Box"
+ * Course, and the default Course of simulation tests.
  */
 export const placeholderCourse: CourseData = {
   id: "placeholder",
-  name: "Placeholder",
+  name: "Practice Box",
   holes: [
     {
       id: "box",

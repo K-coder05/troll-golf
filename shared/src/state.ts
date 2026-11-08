@@ -47,6 +47,13 @@ export interface PlayerState {
   strokes: number[];
   /** True once the ball has dropped into the Cup on the current Hole. The Player then spectates. */
   holedOut: boolean;
+  /**
+   * Standing, 1 = first: Strokes from earlier Holes plus Strokes so far on
+   * this Hole, with distance to the Cup breaking ties (a Holed-Out ball counts
+   * as distance 0). Every Player has a distinct Standing; last-resort ties go
+   * to whoever joined first. Recomputed every simulation step.
+   */
+  standing: number;
 }
 
 /** The Cup of the current Hole. Synced (not just in the Hole layout) because Admin Powers can move or resize it. */
@@ -61,6 +68,14 @@ export interface RoomState {
   /** The 4-letter room code. */
   code: string;
   phase: Phase;
+  /**
+   * The Player who runs the lobby: picks the Course and starts the game. The
+   * room creator, or the longest-present Player once they leave. Public; it
+   * has nothing to do with the (secret) Admin.
+   */
+  creatorId: string;
+  /** The Leader: first in Standing among Players who haven't Holed Out. "" if there is none. */
+  leaderId: string;
   courseId: string;
   holeIndex: number;
   /** Clock time (ms) when the current Hole's timer runs out; 0 outside the playing phase. */

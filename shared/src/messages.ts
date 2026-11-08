@@ -29,8 +29,18 @@ export interface ShootMessage {
   power: number;
 }
 
+/** Lobby settings the room creator changes. Fields left out stay as they are. Ticket 24 adds the chaos level. */
+export interface ConfigureMessage {
+  courseId?: string;
+}
+
+/** Start the game from the lobby. Room creator only. */
+export type StartMessage = Record<string, never>;
+
 export interface ClientMessages {
   shoot: ShootMessage;
+  configure: ConfigureMessage;
+  start: StartMessage;
 }
 
 export type ClientMessageType = keyof ClientMessages;
@@ -72,7 +82,21 @@ export interface TimeMessage {
   now: number;
 }
 
+/** A Course the room creator can pick in the lobby. */
+export interface CourseSummary {
+  id: string;
+  name: string;
+  /** Number of Holes. */
+  holes: number;
+}
+
+/** The Courses this room can play, sent to a Player when they join. */
+export interface CoursesMessage {
+  courses: CourseSummary[];
+}
+
 export interface ServerMessages {
+  courses: CoursesMessage;
   feed: FeedMessage;
   fx: FxMessage;
   hole: HoleMessage;

@@ -1,6 +1,6 @@
 import { Room, type Client } from "@colyseus/core";
 import { MAX_PLAYERS, type JoinOptions } from "@troll-golf/shared";
-import { defaultCourse } from "../courses";
+import { courses, defaultCourse } from "../courses";
 import { createGame, mathRandomRng, systemClock, type Game, type GameEvent } from "../simulation";
 import { claimRoomCode, releaseRoomCode } from "./roomCodes";
 import { recipientsFor } from "./routeEvents";
@@ -24,13 +24,26 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
   override onCreate(): void {
     const code = claimRoomCode();
     this.roomId = code;
-    this.game = createGame({ course: defaultCourse, code, rng: mathRandomRng, clock: systemClock });
+    this.game = createGame({ course: defaultCourse, courses, code, rng: mathRandomRng, clock: systemClock });
     this.state = new RoomStateSchema();
     syncState(this.state, this.game.getState());
 
     this.onMessage("shoot", (client, message: unknown) => {
       const { angle, power } = (message ?? {}) as { angle?: unknown; power?: unknown };
       this.game.handleIntent(client.sessionId, { type: "shoot", angle: Number(angle), power: Number(power) });
+    });
+    // Lobby: the simulation checks that only the room creator may do these.
+    this.onMessage("configure", (client, message: unknown) => {
+      const { courseId } = (message ?? {}) as { courseId?: unknown };
+      this.game.handleIntent(client.sessionId, {
+        type: "configure",
+        courseId: courseId === undefined ? undefined : String(courseId),
+      });
+      this.flush();
+    });
+    this.onMessage("start", (client) => {
+      this.game.handleIntent(client.sessionId, { type: "start" });
+      this.flush();
     });
 
     this.setPatchRate(PATCH_MS);
@@ -45,9 +58,6 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
       color: String(options?.color ?? ""),
     });
     if (!result.ok) throw new Error(`Join refused: ${result.reason}`);
-    // No lobby screen yet: the first join starts the game. Ticket 07 replaces
-    // this with the room creator's Start button sending the start intent.
-    if (this.game.getState().phase === "lobby") this.game.handleIntent(client.sessionId, { type: "start" });
     this.flush();
   }
 

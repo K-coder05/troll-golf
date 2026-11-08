@@ -1,7 +1,8 @@
 /**
  * Smoke test of the real server over WebSockets with the real client SDK.
  * The spec leaves the adapter to playtests; this only proves the wiring:
- * room codes, joining by code, the 8-Player cap and a shot reaching everyone.
+ * room codes, joining by code, the lobby (only the room creator configures and
+ * starts), the 8-Player cap and a shot reaching everyone.
  */
 import { Client, type Room } from "@colyseus/sdk";
 import type { Server } from "@colyseus/core";
@@ -36,54 +37,94 @@ async function waitFor(check: () => boolean, timeoutMs = 2000): Promise<void> {
 
 const playersOf = (room: Room) => {
   const state = room.state as unknown as { players: Map<string, RoomState["players"][string]> };
-  return state.players;
+  return state?.players ?? new Map();
 };
 
-describe("GolfRoom over the network", () => {
-  it("creates a room with a 4-letter code and a second client joins it by code", async () => {
-    const maya = track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366" }));
-    expect(isValidRoomCode(maya.roomId)).toBe(true);
-    maya.onMessage("hole", () => undefined);
-    maya.onMessage("time", () => undefined);
-    const mayaFeed: string[] = [];
-    maya.onMessage("feed", (m: { text: string }) => mayaFeed.push(m.text));
+/** Joined rooms get these one-shot messages; register them so the SDK doesn't warn. */
+function listen(room: Room, feed: string[] = []): Room {
+  room.onMessage("hole", () => undefined);
+  room.onMessage("time", () => undefined);
+  room.onMessage("courses", () => undefined);
+  room.onMessage("fx", () => undefined);
+  room.onMessage("feed", (m: { text: string }) => feed.push(m.text));
+  return room;
+}
 
-    const ben = track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff" }));
-    ben.onMessage("hole", () => undefined);
-    ben.onMessage("time", () => undefined);
+const stateOf = (room: Room) => (room.state ?? {}) as unknown as RoomState;
+
+describe("GolfRoom over the network", () => {
+  it("creates a room with a 4-letter code; friends join its lobby; only the room creator configures and starts", async () => {
+    const mayaFeed: string[] = [];
+    let mayaCourses: { id: string }[] = [];
+    const maya = track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366" }));
+    listen(maya, mayaFeed);
+    maya.onMessage("courses", (m: { courses: { id: string }[] }) => (mayaCourses = m.courses));
+    expect(isValidRoomCode(maya.roomId)).toBe(true);
+
+    const ben = listen(track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff" })));
+    const jay = listen(track(await newClient().joinById(maya.roomId, { name: "Jay", color: "#33cc66" })));
     expect(ben.roomId).toBe(maya.roomId);
 
-    await waitFor(() => playersOf(maya).size === 2 && playersOf(ben).size === 2);
-    expect((ben.state as unknown as RoomState).code).toBe(maya.roomId);
-    // Rooms play the converted sample Course by default.
-    expect((ben.state as unknown as RoomState).courseId).toBe("sample");
+    await waitFor(() => [maya, ben, jay].every((r) => playersOf(r).size === 3));
+    expect(stateOf(ben).code).toBe(maya.roomId);
+    // Everyone waits in the lobby; the room creator runs it. Rooms play the sample Course by default.
+    expect(stateOf(ben).phase).toBe("lobby");
+    expect(stateOf(jay).creatorId).toBe(maya.sessionId);
+    expect(stateOf(ben).courseId).toBe("sample");
     // An everyone-audience event from the simulation reached Maya's connection.
-    await waitFor(() => mayaFeed.includes("Ben joined"));
+    await waitFor(() => mayaFeed.includes("Ben joined") && mayaFeed.includes("Jay joined"));
+    // The Courses she can pick were sent when she joined.
+    await waitFor(() => mayaCourses.length > 0);
+    expect(mayaCourses.map((c) => c.id)).toContain("placeholder");
 
-    // The first join started the game: after the 3-2-1 countdown the Hole is being played.
-    const phase = () => (ben.state as unknown as RoomState).phase;
-    expect(["countdown", "playing"]).toContain(phase());
+    // Ben isn't the room creator: his Course change and start are ignored.
+    ben.send("configure", { courseId: "placeholder" });
+    ben.send("start", {});
+    await new Promise((r) => setTimeout(r, 200));
+    expect(stateOf(jay).phase).toBe("lobby");
+    expect(stateOf(jay).courseId).toBe("sample");
+
+    // Maya picks the Course and starts: everyone goes to the 3-2-1, then plays.
+    maya.send("configure", { courseId: "placeholder" });
+    await waitFor(() => stateOf(jay).courseId === "placeholder");
+    maya.send("start", {});
+    const phase = () => stateOf(ben).phase;
+    await waitFor(() => phase() === "countdown");
     await waitFor(() => phase() === "playing", 4000);
 
     // Maya shoots; Ben's copy of the state sees her ball leave the Tee and count a Stroke.
     const mayaBall = () => playersOf(ben).get(maya.sessionId)?.ball;
     const start = { x: mayaBall()!.x, y: mayaBall()!.y };
-    maya.send("shoot", { angle: Math.PI / 2, power: 0.5 });
+    maya.send("shoot", { angle: Math.PI / 2, power: 0.3 });
     await waitFor(() => mayaBall()!.atRest === false);
     await waitFor(() => mayaBall()!.atRest === true, 5000);
     expect(mayaBall()!.x).toBeCloseTo(start.x, 0);
     expect(mayaBall()!.y).not.toBeCloseTo(start.y, 0);
     expect(playersOf(ben).get(maya.sessionId)?.strokes[0]).toBe(1);
+    // Standing is synced: Maya has a Stroke, the others none.
+    expect(playersOf(jay).get(maya.sessionId)?.standing).toBe(3);
   }, 15_000);
+
+  it("hands the lobby to the next Player when the room creator leaves", async () => {
+    const maya = listen(track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366" })));
+    const ben = listen(track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff" })));
+    await waitFor(() => playersOf(ben).size === 2);
+    expect(stateOf(ben).creatorId).toBe(maya.sessionId);
+
+    await maya.leave();
+    await waitFor(() => stateOf(ben).creatorId === ben.sessionId);
+    ben.send("start", {});
+    await waitFor(() => stateOf(ben).phase === "countdown");
+  });
 
   it("refuses a join with a wrong code", async () => {
     await expect(newClient().joinById("ZZZZ", { name: "Lost", color: "#000000" })).rejects.toThrow();
   });
 
   it("refuses a 9th join", async () => {
-    const host = track(await newClient().create(ROOM_NAME, { name: "P1", color: "#111111" }));
+    const host = listen(track(await newClient().create(ROOM_NAME, { name: "P1", color: "#111111" })));
     for (let i = 2; i <= 8; i++) {
-      track(await newClient().joinById(host.roomId, { name: `P${i}`, color: "#222222" }));
+      listen(track(await newClient().joinById(host.roomId, { name: `P${i}`, color: "#222222" })));
     }
     await waitFor(() => playersOf(host).size === 8);
     await expect(newClient().joinById(host.roomId, { name: "P9", color: "#333333" })).rejects.toThrow();

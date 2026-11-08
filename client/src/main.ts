@@ -2,6 +2,8 @@ import type { Room } from "@colyseus/sdk";
 import {
   isValidRoomCode,
   normalizeRoomCode,
+  type CourseSummary,
+  type CoursesMessage,
   type FeedMessage,
   type FxMessage,
   type HoleMessage,
@@ -10,7 +12,8 @@ import {
 import * as Phaser from "phaser";
 import { createRoom, joinRoom } from "./net/connection";
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
-import { startHud } from "./ui/hud";
+import { startHud, type HudView } from "./ui/hud";
+import { startLobby } from "./ui/lobby";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("join-form");
@@ -21,9 +24,53 @@ const createButton = $<HTMLButtonElement>("create");
 const joinButton = $<HTMLButtonElement>("join");
 const errorText = $<HTMLParagraphElement>("error");
 
-// A shared link can carry the code: https://example/?room=GOLF
+/** Ball colours offered as one-click swatches; the colour input next to them takes any other. */
+const SWATCHES = ["#ff3366", "#ff9f40", "#ffd24d", "#5cd65c", "#40e0d0", "#4da6ff", "#c266ff", "#f2f2f2"];
+const PROFILE_KEY = "troll-golf:profile";
+
+// ---- Screen flow: Title -> Create/Join -> Lobby -> game ----
+
+type Screen = "title" | "join-screen" | "lobby-screen" | "game";
+function show(screen: Screen): void {
+  for (const id of ["title", "join-screen", "lobby-screen"] as const) $(id).hidden = id !== screen;
+}
+
+// A shared link can carry the code: https://example/?room=GOLF. It skips the title.
 const linkedCode = new URLSearchParams(location.search).get("room");
 if (linkedCode) codeInput.value = normalizeRoomCode(linkedCode);
+show(linkedCode ? "join-screen" : "title");
+$("play").addEventListener("click", () => {
+  show("join-screen");
+  nameInput.focus();
+});
+
+// ---- Create/Join: nickname, colour, code ----
+
+const swatches = $("swatches");
+const swatchButtons = SWATCHES.map((color) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "swatch";
+  button.style.background = color;
+  button.title = color;
+  button.addEventListener("click", () => setColor(color));
+  swatches.insertBefore(button, colorInput);
+  return button;
+});
+function setColor(color: string): void {
+  colorInput.value = color;
+  swatchButtons.forEach((b, i) => b.setAttribute("aria-pressed", String(SWATCHES[i] === color)));
+}
+colorInput.addEventListener("input", () => setColor(colorInput.value));
+
+// Remember the last nickname and colour on this device (a convenience; fine if storage is blocked).
+try {
+  const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) ?? "null") as { name?: string; color?: string } | null;
+  if (saved?.name) nameInput.value = saved.name;
+  setColor(saved?.color && /^#[0-9a-f]{6}$/i.test(saved.color) ? saved.color : SWATCHES[0]!);
+} catch {
+  setColor(SWATCHES[0]!);
+}
 
 function joinOptions(): JoinOptions | null {
   const name = nameInput.value.trim();
@@ -31,6 +78,11 @@ function joinOptions(): JoinOptions | null {
     errorText.textContent = "Pick a nickname first.";
     nameInput.focus();
     return null;
+  }
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify({ name, color: colorInput.value }));
+  } catch {
+    // Storage blocked: nothing to remember.
   }
   return { name, color: colorInput.value };
 }
@@ -41,7 +93,7 @@ async function enter(connect: (options: JoinOptions) => Promise<Room>): Promise<
   errorText.textContent = "";
   createButton.disabled = joinButton.disabled = true;
   try {
-    startGame(await connect(options));
+    enterRoom(await connect(options));
   } catch (err) {
     console.error(err);
     errorText.textContent = "Couldn't join that room. Check the code, or it may be full.";
@@ -63,22 +115,31 @@ form.addEventListener("submit", (event) => {
   void enter((options) => joinRoom(code, options));
 });
 
-function startGame(room: Room): void {
-  $("lobby").hidden = true;
-  $("hud").hidden = false;
+// ---- In a room: the lobby, then the game ----
+
+function enterRoom(room: Room): void {
   $("room-code").textContent = room.roomId;
   history.replaceState(null, "", `?room=${room.roomId}`);
 
-  // Register handlers right away: the server sends the Hole as soon as we join.
+  // Register handlers right away: the server sends these as soon as we join.
   let hole: HoleMessage | null = null;
   room.onMessage("hole", (message: HoleMessage) => (hole = message));
+  let courses: CourseSummary[] = [];
+  room.onMessage("courses", (message: CoursesMessage) => (courses = message.courses));
   const pendingFx: FxMessage[] = [];
   room.onMessage("fx", (message: FxMessage) => pendingFx.push(message));
   room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
 
-  startHud(room, () => hole);
+  const view: HudView = { spectating: "" };
+  startHud(room, () => hole, view);
+  startLobby(room, {
+    courses: () => courses,
+    // The lobby screen covers the game until the room creator starts it.
+    onPhase: (inLobby) => show(inLobby ? "lobby-screen" : "game"),
+  });
+  show("lobby-screen");
   room.onLeave(() => {
-    errorText.textContent = "Disconnected from the room.";
+    // Back to the join screen with the code still in the address bar.
     location.reload();
   });
 
@@ -86,6 +147,7 @@ function startGame(room: Room): void {
     room,
     hole: () => hole,
     takeFx: () => pendingFx.splice(0),
+    view,
   };
 
   new Phaser.Game({

@@ -15,6 +15,8 @@ export const FRAME_MS = 1000 / 60;
 
 export interface TestGameOptions {
   course?: CourseData;
+  /** Other Courses the room creator may pick in the lobby. */
+  courses?: Record<string, CourseData>;
   settings?: Partial<GameSettings>;
   seed?: number;
   code?: string;
@@ -31,6 +33,7 @@ export class TestGame {
   constructor(options: TestGameOptions = {}) {
     this.game = createGame({
       course: options.course ?? placeholderCourse,
+      courses: options.courses,
       code: options.code ?? "TEST",
       settings: options.settings,
       rng: createSeededRng(options.seed ?? 1),
@@ -50,7 +53,7 @@ export class TestGame {
     return this.send(playerId, { type: "join", name, color });
   }
 
-  /** Start the game from the lobby (as the first Player) and wait out the 3-2-1, so shots are allowed. */
+  /** Start the game from the lobby (as the first Player, the room creator) and wait out the 3-2-1, so shots are allowed. */
   startPlaying(): void {
     const first = Object.keys(this.state.players)[0];
     if (!first) throw new Error("Nobody has joined");

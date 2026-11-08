@@ -8,6 +8,8 @@ import { PlayerSchema, type RoomStateSchema } from "./schema";
 export function syncState(target: RoomStateSchema, source: Readonly<RoomState>): void {
   target.code = source.code;
   target.phase = source.phase;
+  target.creatorId = source.creatorId;
+  target.leaderId = source.leaderId;
   target.courseId = source.courseId;
   target.holeIndex = source.holeIndex;
   target.holeEndsAt = source.holeEndsAt;
@@ -45,6 +47,7 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
     ball.restSpot.x = player.ball.restSpot.x;
     ball.restSpot.y = player.ball.restSpot.y;
     synced.holedOut = player.holedOut;
+    synced.standing = player.standing;
     syncNumbers(synced.strokes, player.strokes);
   }
 }

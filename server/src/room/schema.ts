@@ -34,6 +34,7 @@ export const PlayerSchema = schema(
     ball: BallSchema,
     strokes: t.array("number"),
     holedOut: t.boolean(),
+    standing: t.number(),
   },
   "Player",
 );
@@ -62,6 +63,8 @@ export const RoomStateSchema = schema(
   {
     code: t.string(),
     phase: t.string(),
+    creatorId: t.string(),
+    leaderId: t.string(),
     courseId: t.string(),
     holeIndex: t.number(),
     holeEndsAt: t.number(),

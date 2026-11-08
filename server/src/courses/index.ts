@@ -1,4 +1,5 @@
 import type { CourseData } from "@troll-golf/shared";
+import { placeholderCourse } from "./placeholder";
 import sampleJson from "./sample.json";
 
 /**
@@ -37,8 +38,15 @@ function isPoint(p: unknown): p is { x: number; y: number } {
 /** The 3-Hole sample Course, converted from the Tiled maps in `./sample/`. */
 export const sampleCourse = loadCourse(sampleJson);
 
-/** Courses a room can play, by id. Ticket 07 lets the room creator pick one in the lobby. */
-export const courses: Readonly<Record<string, CourseData>> = { [sampleCourse.id]: sampleCourse };
+/**
+ * Courses a room can play, by id, in the order the lobby lists them. The room
+ * creator picks one in the lobby. The one-Hole Practice Box is handy for
+ * trying things out.
+ */
+export const courses: Readonly<Record<string, CourseData>> = {
+  [sampleCourse.id]: sampleCourse,
+  [placeholderCourse.id]: placeholderCourse,
+};
 
-/** The Course a new room plays until the lobby can choose. */
+/** The Course a new room plays unless the room creator picks another. */
 export const defaultCourse = sampleCourse;

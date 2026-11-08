@@ -4,6 +4,7 @@ import {
   REST_DURATION_MS,
   REST_SPEED,
   type CourseData,
+  type CourseSummary,
   type GameSettings,
   type PlayerState,
   type RoomState,
@@ -62,7 +63,13 @@ const TEE_SLOTS: Vec2[] = [
 ];
 
 export interface CreateGameOptions {
+  /** The Course the room starts with. */
   course: CourseData;
+  /**
+   * Courses the room creator may pick from in the lobby, by id. The starting
+   * `course` is always included.
+   */
+  courses?: Readonly<Record<string, CourseData>>;
   /** The room code shown to Players. */
   code: string;
   settings?: Partial<GameSettings>;
@@ -95,13 +102,20 @@ export function unfinishedScore(strokes: number, par: number, strokeCapOverPar: 
 
 export function createGame(options: CreateGameOptions): Game {
   // options.rng is not used yet; every later roll must come from it so tests stay deterministic.
-  const { course, clock } = options;
-  if (course.holes.length === 0) throw new Error(`Course "${course.id}" has no Holes`);
+  const { clock } = options;
+  let course = options.course;
+  const catalogue: Readonly<Record<string, CourseData>> = { ...options.courses, [course.id]: course };
+  for (const c of Object.values(catalogue)) {
+    if (c.holes.length === 0) throw new Error(`Course "${c.id}" has no Holes`);
+  }
+  const courseList: CourseSummary[] = Object.values(catalogue).map((c) => ({ id: c.id, name: c.name, holes: c.holes.length }));
 
   const firstHole = course.holes[0]!;
   const state: RoomState = {
     code: options.code,
     phase: "lobby",
+    creatorId: "",
+    leaderId: "",
     courseId: course.id,
     holeIndex: 0,
     holeEndsAt: 0,
@@ -114,6 +128,8 @@ export function createGame(options: CreateGameOptions): Game {
   };
   let events: GameEvent[] = [];
   let joinCount = 0;
+  // When each Player joined (a join counter): the last Standing tiebreak and who takes over running the lobby.
+  const joinOrder = new Map<string, number>();
   // Simulation time in ms, advanced in fixed physics steps by step().
   let elapsedMs = 0;
   // Time handed to step() that hasn't been simulated yet (less than one step).
@@ -131,6 +147,8 @@ export function createGame(options: CreateGameOptions): Game {
   const slowSteps = new Map<string, number>();
   // Balls inside the Cup's capture radius that already lipped out, so each pass lips out once.
   const lippedOut = new Set<string>();
+  // Balls in the Cup's no-collision zone, where other balls pass through them.
+  const cupGuarded = new Set<string>();
 
   const emit = (event: GameEvent) => events.push(event);
 
@@ -166,6 +184,46 @@ export function createGame(options: CreateGameOptions): Game {
     insidePads.delete(id);
     portalLocked.delete(id);
     lippedOut.delete(id);
+    cupGuarded.delete(id);
+  }
+
+  /**
+   * Balls don't collide with each other inside the Cup's capture radius
+   * (counting any ball that overlaps it), so nobody can be knocked out of the
+   * Cup. A ball in that zone has ball-ball collisions off, and a contact needs
+   * both balls to allow it. Applied before every physics step.
+   */
+  function guardCup(): void {
+    const cup = state.cup;
+    for (const player of Object.values(state.players)) {
+      if (player.holedOut) continue;
+      const inside = Math.hypot(player.ball.x - cup.x, player.ball.y - cup.y) <= cup.radius + BALL_RADIUS;
+      if (inside === cupGuarded.has(player.id)) continue;
+      if (inside) cupGuarded.add(player.id);
+      else cupGuarded.delete(player.id);
+      physics.setCollisions(player.id, { walls: true, balls: !inside });
+    }
+  }
+
+  /**
+   * Standing: Strokes from earlier Holes plus Strokes so far on this Hole
+   * (penalties included), fewest first, with distance to the Cup breaking
+   * ties. A Holed-Out Player's distance is 0, so they rank by their final
+   * Strokes. Remaining ties go to whoever joined first. The Leader is first
+   * in Standing among Players who haven't Holed Out.
+   */
+  function updateStandings(): void {
+    const cup = state.cup;
+    const ranked = Object.values(state.players)
+      .map((p) => ({
+        player: p,
+        total: p.strokes.reduce((a, b) => a + b, 0),
+        distance: p.holedOut ? 0 : Math.hypot(p.ball.x - cup.x, p.ball.y - cup.y),
+        order: joinOrder.get(p.id) ?? 0,
+      }))
+      .sort((a, b) => a.total - b.total || a.distance - b.distance || a.order - b.order);
+    ranked.forEach((r, i) => (r.player.standing = i + 1));
+    state.leaderId = ranked.find((r) => !r.player.holedOut)?.player.id ?? "";
   }
 
   // ---- Hole flow: lobby -> countdown -> playing -> holeEnd -> ... -> gameEnd ----
@@ -236,7 +294,8 @@ export function createGame(options: CreateGameOptions): Game {
         if (now >= state.phaseEndsAt) startPlaying();
         break;
       case "playing": {
-        const players = Object.values(state.players);
+        // Disconnected Players (ticket 08) don't hold the Hole up.
+        const players = Object.values(state.players).filter((p) => p.connected);
         const everyoneIn = players.length > 0 && players.every((p) => p.holedOut);
         if (everyoneIn || now >= state.holeEndsAt) endHole();
         break;
@@ -251,10 +310,53 @@ export function createGame(options: CreateGameOptions): Game {
     }
   }
 
-  function start(playerId: string): IntentResult {
+  /** Only the room creator (or whoever took over from them) runs the lobby. */
+  function checkCreator(playerId: string): IntentResult {
     if (!state.players[playerId]) return { ok: false, reason: "unknown_player" };
     if (state.phase !== "lobby") return { ok: false, reason: "wrong_phase" };
+    if (playerId !== state.creatorId) return { ok: false, reason: "not_creator" };
+    return { ok: true };
+  }
+
+  function start(playerId: string): IntentResult {
+    const allowed = checkCreator(playerId);
+    if (!allowed.ok) return allowed;
+    for (const player of Object.values(state.players)) player.strokes = course.holes.map(() => 0);
     startHole(0);
+    return { ok: true };
+  }
+
+  /**
+   * Lobby settings, room creator only. For now just the Course; ticket 24 adds
+   * the chaos level here. A new Course resets the lobby to its first Hole.
+   */
+  function configure(playerId: string, courseId: string | undefined): IntentResult {
+    const allowed = checkCreator(playerId);
+    if (!allowed.ok) return allowed;
+    if (courseId === undefined) return { ok: true };
+    const next = typeof courseId === "string" ? catalogue[courseId] : undefined;
+    if (!next) return { ok: false, reason: "unknown_course" };
+    if (next === course) return { ok: true };
+    course = next;
+    state.courseId = course.id;
+    state.pars = course.holes.map((h) => h.par);
+    state.holeIndex = 0;
+    const hole = currentHole();
+    surfaces = courseSurfaces(hole);
+    physics = newPhysicsWorld();
+    state.cup = { ...hole.cup };
+    state.obstacleTimeMs = 0;
+    const placed: Vec2[] = [];
+    for (const player of Object.values(state.players)) {
+      forgetBall(player.id);
+      const spot = teeSpot(placed);
+      placed.push(spot);
+      placeOnTee(player, spot);
+      physics.addBall(player.id, spot);
+      player.strokes = course.holes.map(() => 0);
+    }
+    emit({ type: "hole", payload: { holeIndex: 0, hole }, audience: everyone });
+    emit({ type: "feed", payload: { text: `Course: ${course.name}` }, audience: everyone });
     return { ok: true };
   }
 
@@ -273,11 +375,17 @@ export function createGame(options: CreateGameOptions): Game {
       ball: { x: spot.x, y: spot.y, vx: 0, vy: 0, atRest: true, restSpot: { ...spot } },
       strokes: course.holes.map(() => 0),
       holedOut: false,
+      standing: 0,
     };
+    joinOrder.set(playerId, joinCount);
     joinCount++;
     state.players[playerId] = player;
+    // The room creator is the first to join.
+    if (!state.creatorId) state.creatorId = playerId;
     physics.addBall(playerId, spot);
+    updateStandings();
     emit({ type: "time", payload: { now: clock.now() }, audience: toPlayer(playerId) });
+    emit({ type: "courses", payload: { courses: courseList }, audience: toPlayer(playerId) });
     emit({ type: "hole", payload: { holeIndex: state.holeIndex, hole: currentHole() }, audience: toPlayer(playerId) });
     emit({ type: "feed", payload: { text: `${player.name} joined` }, audience: everyone });
     return { ok: true };
@@ -289,9 +397,17 @@ export function createGame(options: CreateGameOptions): Game {
     // Lobby-only behaviour for now. Ticket 08 keeps the ball on the course
     // (connected = false) when someone drops mid-game.
     delete state.players[playerId];
+    joinOrder.delete(playerId);
     physics.removeBall(playerId);
     forgetBall(playerId);
     emit({ type: "feed", payload: { text: `${player.name} left` }, audience: everyone });
+    if (state.creatorId === playerId) {
+      // The longest-present Player takes over running the lobby.
+      const next = Object.keys(state.players).sort((a, b) => joinOrder.get(a)! - joinOrder.get(b)!)[0];
+      state.creatorId = next ?? "";
+      if (next) emit({ type: "feed", payload: { text: `${state.players[next]!.name} now runs the lobby` }, audience: everyone });
+    }
+    updateStandings();
     return { ok: true };
   }
 
@@ -423,6 +539,7 @@ export function createGame(options: CreateGameOptions): Game {
 
   /** One fixed 60 Hz step: move every ball, then apply the Cup, hazards and the rest rule. */
   function physicsStep(): void {
+    guardCup();
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
     state.obstacleTimeMs = physics.obstacleTimeMs;
@@ -479,6 +596,8 @@ export function createGame(options: CreateGameOptions): Game {
           return leave(playerId);
         case "start":
           return start(playerId);
+        case "configure":
+          return configure(playerId, intent.courseId);
         case "shoot":
           return shoot(playerId, intent.angle, intent.power);
         default:
@@ -498,6 +617,7 @@ export function createGame(options: CreateGameOptions): Game {
       }
       if (steps === MAX_STEPS_PER_CALL) pendingMs = 0;
       advancePhase();
+      updateStandings();
     },
     getState() {
       return state;
