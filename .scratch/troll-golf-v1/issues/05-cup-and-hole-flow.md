@@ -41,3 +41,5 @@ Notes for later tickets:
 - 12: capture and lip-out read `state.cup` every step, so moving/resizing it is enough; a forced Lip-Out goes in `checkCup` before `holeOut`.
 - 15/27: the client scoreboard sorts by total Strokes only; add the Item Hits tiebreak.
 - 23: final results are the `gameEnd` scoreboard in `hud.ts`; the Recap goes after it.
+
+**Browser check (e2e, 2026-11-08).** Holding Tab during a Hole showed the scoreboard with everyone at "-3" (green) before anyone had putted, because ±Par counted the unfinished Hole's Par. Fixed in `client/src/ui/hud.ts`: ±Par and the under/over colours count only Holes a Player has finished (the current one once they're in the Cup or it has ended). Before then ±Par shows "–". Covered by `e2e/admin.spec.ts`.

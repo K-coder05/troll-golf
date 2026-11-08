@@ -11,7 +11,7 @@
 - [x] A grabbed ball follows the Admin's drag positions and can't be shot while held. Tested through the simulation.
 - [x] Releasing with a throw speed gives the ball that velocity; releasing without one leaves it at rest.
 - [x] Releasing into Water applies +1 Stroke and the Rest Spot return; releasing in the Cup at low speed Holes Out.
-- [ ] The radial menu opens on right-click over a ball, the Cup or terrain, and lists only the Admin Powers that apply.
+- [x] The radial menu opens on right-click over a ball, the Cup or terrain, and lists only the Admin Powers that apply.
 - [x] Secrecy test extended: a Stealth Ball Grab produces no event that identifies it as an Admin Power.
 
 ## Comments
@@ -34,3 +34,5 @@ Not ticked:
 Notes for later tickets:
 - New powers: set `appliesTo` (and optionally `onRadial`) on the panel and the radial menu picks them up. `AdminPowerContext.balls` is the way to move a ball (Swap, Nuke pushes should still use `physics` directly).
 - Powers that need continuation messages can use `quiet: true`.
+
+**Browser check (e2e, 2026-11-08).** `e2e/admin.spec.ts` right-clicks on the Admin's canvas. On Jay's ball the menu shows "Jay's ball" with Scoreboard Edit, Ball Grab, Nuke, Lip-Out, Give Item, Rig the Box and Invert Controls. On the Cup (Tab overview) it shows "The Cup" with Nuke, Move the Cup, Cup Size and Magnet/Repel. On terrain it shows "Terrain" with Nuke, Move the Cup and Terrain Paint. Escape closes it, and a right-click on non-Admin pages opens nothing. Choosing an item from the menu wasn't clicked through (Give Item was used from the console).

@@ -270,6 +270,38 @@ export class HoleScene extends Phaser.Scene {
         this.room.send("shoot", shot satisfies ShootMessage);
       }
     });
+
+    // Browser tests (e2e/) read what the canvas shows through this. Only dev and
+    // `--mode e2e` builds have it: Vite drops the block from the production bundle.
+    // It reports what is already on screen, nothing more.
+    if (import.meta.env.DEV || import.meta.env.VITE_E2E === "1") {
+      const probe = () => {
+        const view = this.adminView();
+        return {
+          sessionId: this.room.sessionId,
+          phase: this.syncedState()?.phase ?? null,
+          holeDrawn: this.drawnHole !== null,
+          cup: (() => {
+            const cup = this.syncedState()?.cup;
+            return cup ? { x: cup.x, y: cup.y, screen: view.screenAt(cup.x, cup.y) } : null;
+          })(),
+          balls: Array.from(this.balls, ([id, s]) => ({
+            id,
+            name: s.label.text,
+            x: s.circle.x,
+            y: s.circle.y,
+            screen: view.screenAt(s.circle.x, s.circle.y),
+            visible: s.circle.visible,
+            alpha: s.circle.alpha,
+            offline: s.badge.visible,
+            effects: s.effects.visible ? s.effects.text : "",
+            iced: s.ice.visible,
+            shielded: s.bubble.visible,
+          })),
+        };
+      };
+      (window as unknown as { __trollGolf?: { probe: typeof probe } }).__trollGolf = { probe };
+    }
   }
 
   override update(_time: number, delta: number): void {

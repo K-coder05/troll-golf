@@ -9,3 +9,6 @@ coverage/
 .vite/
 client/dist-admin/
 logs/
+client/dist-e2e/
+test-results/
+playwright-report/

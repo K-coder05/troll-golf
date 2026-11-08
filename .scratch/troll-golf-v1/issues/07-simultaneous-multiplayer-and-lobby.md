@@ -19,7 +19,7 @@ During play:
 - [x] Standing matches the spec's example: Ben (10 earlier + 2 this Hole, 20 px away) ranks above Maya (9 + 4, 300 px away).
 - [x] The Leader is the first in Standing among Players who haven't Holed Out.
 - [x] The Hole ends only when every connected Player has Holed Out, or when the timer runs out.
-- [ ] Create/Join and Lobby screens work, including nickname and colour.
+- [x] Create/Join and Lobby screens work, including nickname and colour.
 - [ ] Remote balls move smoothly with no visible rubber-banding on a real internet connection with 4 Players. This is the M2 playtest.
 
 ## Comments
@@ -42,3 +42,5 @@ Notes for later tickets:
 - 08: a mid-game `leave` still deletes the Player (and passes the room creator role on). Disconnected Players should keep their ball with `setCollisions(id, { balls: false })`; `guardCup` only toggles balls it is tracking in `cupGuarded`, so 08 should merge both reasons (e.g. collisions on only if connected and not guarded). Late joiners are still placed on the current Tee.
 - 09: the admin secret goes in `JoinOptions.adminSecret`; the room creator is unrelated to the Admin.
 - 24: add `chaosLevel` to the `configure` intent / `ConfigureMessage` and a select in `lobby.ts` next to the Course.
+
+**Browser check (e2e, 2026-11-08).** Create/Join and Lobby were driven in headless Chromium (`e2e/prod.two-browsers.spec.ts`, `e2e/multiplayer.spec.ts`): nickname, colour swatches (the lobby dots show the chosen colours), create, join by code (lowercase accepted), `?room=` links pre-filling the code, "you"/"room creator" tags, Course picker and Start only for the creator, "Waiting for Maya to start…" for others, 3-2-1 countdown, then play. `e2e/multiplayer.spec.ts` has 4 Players; one shoots by mouse drag and the ball moves the right way on the other 3 screens. Jay's connection gets 40–80 ms of in-order jitter on every server message, and his screen samples the remote ball every frame. **Bug found and fixed:** `SnapshotBuffer` timestamped patches by raw arrival time, so jitter made remote balls surge and slow down every patch (50 ms windows varied up to 1.6–1.8x against their neighbours). It now spaces back-to-back patches one patch interval apart and drifts slowly towards real arrival times (max 40 ms behind). In-browser that is down to 1.05–1.25x with no stalls, and there's a new Vitest case in `interpolation.test.ts`. Jitter beyond the 100 ms buffer (e.g. a 30–150 ms spread) still stutters. The "real internet connection with 4 Players" box stays unticked: that is the human M2 playtest over a real network; this was localhost with simulated jitter.

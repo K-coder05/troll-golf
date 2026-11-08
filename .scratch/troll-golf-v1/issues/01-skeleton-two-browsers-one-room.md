@@ -17,7 +17,7 @@ See `.scratch/troll-golf-v1/spec.md` (Architecture, Modules, Testing Decisions).
 - [x] A test harness can create a Game with a seeded random number generator and a controlled clock, send intents, step time, and assert on state and drained events. At least one passing test uses it (e.g. two Players join and both appear in state).
 - [x] Events drained from the simulation carry an audience (everyone, one Player, Admin only), and the adapter routes them by audience.
 - [x] Creating a room returns a 4-letter code; joining with a wrong code fails; a 9th join is refused.
-- [ ] Two browsers on the deployed URL see each other's cursor dots.
+- [x] Two browsers on the deployed URL see each other's cursor dots.
 - [ ] Deployed to one always-on Fly.io machine that also serves the client files.
 
 ## Comments
@@ -40,3 +40,5 @@ Deferred / not done:
 - `leave` removes the Player (lobby behaviour). Ticket 08 keeps the ball and sets `connected = false` mid-game. Player ids are Colyseus session ids for now.
 - Admin auth: `JoinOptions.adminSecret` exists, but the adapter ignores it, and admin-audience events are dropped until ticket 09 provides the Admin's session.
 - The cursor intent and `PlayerState.cursor` are M0 scaffolding. Remove them once balls are in.
+
+**Browser check (e2e, 2026-11-08).** `e2e/prod.two-browsers.spec.ts` (`npm run test:browser`, headless Chromium) runs two browser contexts against the local production build (`client/dist` served by `server/dist`, as `npm run build && npm start`), not a deployed URL: create a room, a wrong code is refused, join by code, both lobbies list both Players with their colours, the creator starts, and both see each other in the Standings and on the Hole canvas (screenshots checked). The cursor dots of M0 no longer exist (balls replaced them), so "see each other" was checked with the lobby, Standings and balls. Ticked on that basis; the Fly.io deploy box stays unticked (needs the owner's account).

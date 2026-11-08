@@ -17,7 +17,7 @@ Admin Powers ignore Shields, the immunity window and the one-disabling-Effect ca
 - [x] With God Mode on, attack Items on the Admin don't land and don't count as Item Hits. In Stealth, the events other Players get match a natural Shield pop exactly (secrecy test extended).
 - [x] Admin Powers on a Shielded, immune or already-disabled Player still take effect.
 - [x] X-ray data is sent only to the Admin's connection; non-Admin audiences never receive it.
-- [ ] The x-ray overlay shows on the Admin's client. (built, typechecked and built; never seen in a real browser)
+- [x] The x-ray overlay shows on the Admin's client.
 
 ## Comments
 
@@ -32,3 +32,5 @@ Built:
 - Tests: `server/test/simulation/adminItems.test.ts` (new) and `secrecy.test.ts` extended (give/rig/godMode in both modes, x-ray only on admin audience). 319 tests in total.
 
 Not ticked: the x-ray overlay and panels were never clicked through in a real browser.
+
+**Browser check (e2e, 2026-11-08).** `e2e/admin.spec.ts`: Alt+X shows the Admin's overlay canvas and it draws a label per ball ("no item", "🧊 Frozen by Kim", checked on screenshot and by drawn-pixel count). A second Alt+X hides it, and on non-Admin pages Alt+X adds nothing. The Give Item panel was used for real. Not checked in the browser: the aim line (needs another Player mid-drag), and the Rig the Box and God Mode panels.

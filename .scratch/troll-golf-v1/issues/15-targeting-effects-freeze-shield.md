@@ -30,7 +30,7 @@ If nobody can be targeted, the Item is kept, not used up.
 - [x] A Player under Freeze can't receive another disabling Effect.
 - [x] Shield absorbs exactly one attack and then disappears; it expires after 30 s.
 - [x] A blocked attack doesn't count as an Item Hit; a landed one does. Ties in final results go to more Item Hits.
-- [ ] Freeze and Shield badges show on the ball, and the kill feed shows hits and blocks.
+- [x] Freeze and Shield badges show on the ball, and the kill feed shows hits and blocks.
 - [x] Freezing a ball before a Nuke and checking the held Item is kept closes the open check from ticket 11, if 11 is done.
 
 ## Comments
@@ -62,3 +62,4 @@ Notes for later tickets:
 - 23: `getEffectLog()` and the `hit`/`blocked` entries of `getItemLog()` have what the Recap needs (Item Hits taken = `hit` entries by `targetId`).
 - 24: pass `durationScale` into `createEffectSystem` from `state.settings.chaosLevel`.
 
+**Browser check (e2e, 2026-11-08).** `e2e/admin.spec.ts` uses the Admin's Give Item. Jay gets a Shield and uses it with Space: all three screens show the bubble, the 🛡️ badge and "Jay raised a Shield". The Admin gets a Freeze Ray and holds Space: the target picker lists Jay and Maya, and gold rings mark their balls. Picking Jay: the Shield eats it ("Jay's Shield ate a Freeze Ray", purple `block` line) and the bubble goes. Another Freeze Ray goes to Maya with key 2: everyone sees "Maya got frozen" (blue `hit` line), the ice block and the 🧊 badge, and Maya sees "Frozen! Mash click to break free". Screenshots checked.

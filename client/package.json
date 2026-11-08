@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "vite build && node build-admin.mjs",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build:e2e": "VITE_E2E=1 vite build --mode e2e --outDir dist-e2e"
   }
 }

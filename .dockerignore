@@ -4,3 +4,6 @@ node_modules
 .git
 .scratch
 *.log
+client/dist-e2e
+test-results
+playwright-report

@@ -16,7 +16,7 @@ npm workspaces, all TypeScript:
 | `tools/` | Dev tooling. `npm run convert-course` turns Tiled maps into course data; see `docs/course-authoring.md`. The sample Course's maps are in `server/src/courses/sample/`; `npm run convert-sample-course` rebuilds `server/src/courses/sample.json`. |
 | `client/` | Phaser + Vite browser client. DOM screens for Title, Create/Join, Lobby and the HUD; a Phaser scene for the Hole. It renders synced state (balls interpolated ~100 ms behind) and sends intents. |
 
-Tests live in `server/test/` (simulation scenarios through `test/harness.ts`, plus a WebSocket smoke test) and next to shared and client code (`client/src/net/interpolation.test.ts`).
+Tests live in `server/test/` (simulation scenarios through `test/harness.ts`, plus a WebSocket smoke test) and next to shared and client code (`client/src/net/interpolation.test.ts`). Browser tests are in `e2e/`. They play real games with several browser contexts, including an Admin. They run against the production build, plus a `--mode e2e` build of the client (`client/dist-e2e`) that adds a read-only `window.__trollGolf.probe()` reporting what the canvas draws. The public build (`client/dist`) doesn't have it.
 
 ## Run it
 
@@ -35,6 +35,7 @@ Other scripts:
 
 ```sh
 npm test           # Vitest, all packages
+npm run test:browser  # builds, then Playwright drives headless Chromium against the production server (e2e/)
 npm run typecheck  # tsc in every workspace
 npm run build      # client -> client/dist, admin bundle -> client/dist-admin, server bundle -> server/dist
 npm start          # production server on $PORT (default 2567), serving client/dist

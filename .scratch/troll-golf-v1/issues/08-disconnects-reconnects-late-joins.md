@@ -16,7 +16,7 @@
 - [x] A Player still disconnected at Hole end gets min(Strokes + 2, stroke cap).
 - [x] A disconnected Player doesn't hold up the "everyone Holed Out" check.
 - [x] A late joiner starts at the next Hole, with each missed Hole scored at Par + 4.
-- [ ] The client shows a disconnected badge on the ball and a spectator view for late joiners.
+- [x] The client shows a disconnected badge on the ball and a spectator view for late joiners.
 
 ## Comments
 
@@ -44,3 +44,5 @@ Notes for later tickets:
 - 14: keep the held Item on the Player (state or a per-Player map that disconnect doesn't clear) and reconnect restores it automatically. Holed-Out and disconnected Players have no physics body, so Item Box pickup checks should skip them.
 - 15: use and extend `isTargetable`. A disconnected Player can still be the Leader (Standing is about score); targeting should skip to the next targetable Standing.
 - 10/11/19 (Ball Grab, Nuke, Swap): balls without a body (`connected = false`, `spectating`, Holed Out) must not be moved through `physics`; decide per power whether a disconnected ball is affected (Nuke Wipe could move it in state only).
+
+**Browser check (e2e, 2026-11-08).** `e2e/reconnect.spec.ts`: a test hook wraps the page's WebSocket to drop it (close 4010, refuse new sockets) and later restore it. The dropped Player sees "Connection lost · reconnecting…". The other sees that ball greyed out (alpha 0.35) with the "offline" badge and an "offline" tag in the Standings, and all of it clears after the auto-reconnect (same session id). A mid-game reload then rejoins as the same Player. A late joiner (via a `?room=` link) gets the spectate bar ("You joined mid-game… Watching Maya"), no ball on the course, and "next Hole" in the Standings. **Bug found and fixed:** a reload after an auto-reconnect landed on the join screen, because `onReconnect` saved the seat before the SDK had stored the new reconnection token (the server refused the stale one with 524). `main.ts` now saves it in a microtask after the handler. Cosmetic, not fixed: on a crowded Tee the "offline" badge under a ball can sit on the neighbouring ball's name.

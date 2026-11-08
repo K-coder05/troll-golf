@@ -18,7 +18,7 @@ This ticket also sets up the Admin Power pipeline that later Admin Powers plug i
 - [x] **Secrecy test:** across a scripted game using Scoreboard Edit in both modes, no synced state and no event sent to a non-Admin audience contains an admin flag, the Admin's id as the source of an Admin Power, or the Admin's name.
 - [x] A Loud use sends a Golf Gods banner event to everyone; a Stealth use sends no banner.
 - [x] The admin bundle is served only after authentication and isn't referenced by the normal client. Hiding it from DevTools is nice to have.
-- [ ] The console, hotbar and Caps Lock toggle work on the Admin's client only.
+- [x] The console, hotbar and Caps Lock toggle work on the Admin's client only.
 - [x] Every Admin Power use is logged server-side with a timestamp, never synced.
 
 ## Comments
@@ -42,3 +42,5 @@ Notes for later tickets:
 - 10–13, 20, 21: extend `useAdminPowers` in `secrecy.test.ts` with each new power so the Maya-vs-Ben indistinguishability check covers it. Powers needing a target should reject `unknown_target`. Admin Powers ignore Shields/immunity, so don't route them through `isTargetable`.
 - 20: x-ray goes out as an `admin`-audience event (already routed only to the Admin's connection).
 - 23: `getAdminLog()` has everything the reveal needs (hole, power, mode, target, summary, timestamp); the Recap sent to non-Admins with reveal off must not include it.
+
+**Browser check (e2e, 2026-11-08).** `e2e/admin.spec.ts`: the Admin joins through the hidden passphrase field (backtick on Create/Join) and only that page fetches `/admin-bundle/<token>.js`. A wrong passphrase joins as a normal Player who never requests anything admin. Backtick opens and closes the console; it has 9 hotbar slots, and Digit3/Digit1 pick Nuke/Scoreboard Edit. Caps Lock on shows "👑 LOUD" with the gold border, and off shows "🥷 STEALTH". On non-Admin pages backtick, Caps Lock and digits show nothing and no `.tga-*` element exists (also checked on the plain production build in `prod.two-browsers.spec.ts`). Caveat: Playwright's keyboard doesn't latch Caps Lock, so the spec sends a key event with `modifierCapsLock` set; the real key wasn't pressed.
