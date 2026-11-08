@@ -459,6 +459,6 @@ describe("Ink Splat", () => {
   it("counts as an Item Hit when it lands", () => {
     const t = inkGame(["jay", "maya"], ["maya"]);
     use(t, "maya");
-    expect(hitsLog(t)).toMatchObject([{ kind: "hit", userId: "maya", targetId: "jay", item: "inkSplat" }]);
+    expect(hitsLog(t)).toMatchObject([{ kind: "hit", playerId: "maya", targetId: "jay", item: "inkSplat" }]);
   });
 });
