@@ -8,3 +8,4 @@ coverage/
 *.tsbuildinfo
 .vite/
 client/dist-admin/
+logs/

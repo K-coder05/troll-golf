@@ -8,6 +8,7 @@
 
 import type { AdminBundleMessage, AdminMessage, AdminResultMessage, BannerMessage, XrayMessage } from "./admin";
 import type { HoleData } from "./course";
+import type { Recap, RevealMessage, RevealStateMessage, SessionLogMessage } from "./recap";
 import type { ItemDeniedMessage, ItemId, ItemSlotMessage, UseItemMessage } from "./items";
 
 /** The single Colyseus room type. */
@@ -78,6 +79,8 @@ export interface ClientMessages {
   mash: MashMessage;
   /** Use an Admin Power (the Admin's session only). */
   admin: AdminMessage;
+  /** Turn the Troll Recap reveal on or off (the Admin's session only). */
+  reveal: RevealMessage;
 }
 
 export type ClientMessageType = keyof ClientMessages;
@@ -191,6 +194,12 @@ export interface ServerMessages {
   adminResult: AdminResultMessage;
   /** Admin only: every Player's held Item, Effects and aim, for the x-ray overlay. */
   xray: XrayMessage;
+  /** Admin only: the Recap reveal setting. */
+  revealState: RevealStateMessage;
+  /** Admin only: the full session log, once the game ends. */
+  sessionLog: SessionLogMessage;
+  /** Everyone: the Troll Recap, at game end (and again if the Admin flips the reveal afterwards). */
+  recap: Recap;
   /** Everyone: the Golf Gods banner of a Loud Admin Power. */
   banner: BannerMessage;
   courses: CoursesMessage;

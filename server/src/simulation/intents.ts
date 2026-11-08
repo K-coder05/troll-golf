@@ -46,7 +46,9 @@ export type Intent =
    * Use an Admin Power. Untrusted: the simulation checks that the sender is
    * the Admin and validates power, mode and params (see admin.ts).
    */
-  | AdminIntent;
+  | AdminIntent
+  /** Admin only: switch the Troll Recap reveal. Untrusted `enabled` must be a boolean. */
+  | { type: "reveal"; enabled: unknown };
 
 export type IntentRejection =
   | "room_full"

@@ -71,6 +71,12 @@ function playScriptedGame(adminId: Id): Observed {
 
   useAdminPowers(use);
 
+  // Jay freezes Ben with the Freeze Ray the Admin gave him: something for the Recap to say.
+  record();
+  expect(t.send("jay", { type: "useItem", targetId: "ben" })).toEqual({ ok: true });
+  t.advance(7000);
+  record();
+
   t.advanceUntilPhase("holeEnd");
   record();
   use("scoreboardEdit", "loud", { targetId: "ben", delta: -1, holeIndex: 0 });
@@ -171,6 +177,22 @@ describe("secrecy of the Admin", () => {
     // The script really did use powers in both modes and changed the scores.
     expect(asMaya.powerEvents.filter((p) => p.mode === "loud").length).toBeGreaterThan(0);
     expect(asMaya.powerEvents.filter((p) => p.mode === "stealth").length).toBeGreaterThan(0);
+  });
+
+  it("the Troll Recap, sent to everyone at game end, is identical whoever the Admin is and says nothing about them", () => {
+    const recapOf = (run: Observed) => run.events.filter((e) => e.type === "recap");
+    expect(recapOf(asMaya)).toHaveLength(1);
+    expect(recapOf(asMaya)).toEqual(recapOf(asBen));
+    const recap = recapOf(asMaya)[0]!;
+    expect(recap.audience).toEqual({ kind: "everyone" });
+    // It is a real Recap: Ben was frozen by Jay.
+    expect(JSON.stringify(recap.payload)).toContain("Ben");
+    expect(JSON.stringify(recap.payload)).not.toMatch(/admin|stealth|loud|power|rig|god|reveal|golf gods|invert/i);
+    // The full log goes to the Admin alone, and it does name them.
+    for (const run of [asMaya, asBen]) {
+      expect(run.events.some((e) => e.type === "sessionLog" || e.type === "revealState")).toBe(false);
+      expect(run.adminEvents.filter((e) => e.type === "sessionLog")).toHaveLength(1);
+    }
   });
 
   it("no synced state and no non-Admin event carries an admin flag or Admin Power marker", () => {

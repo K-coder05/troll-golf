@@ -17,6 +17,7 @@ import type { AdminBundle } from "./adminHost";
 import { createRoom, forgetSeat, joinRoom, rejoinRoom, rememberSeat, serverResource } from "./net/connection";
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 import { startHud, type HudView } from "./ui/hud";
+import { startRecap } from "./ui/recap";
 import { startEmoteWheel } from "./ui/emoteWheel";
 import { startItemSlot } from "./ui/itemSlot";
 import { startKillFeed } from "./ui/killFeed";
@@ -170,6 +171,7 @@ function enterRoom(room: Room): void {
 
   const view: HudView = { spectating: "" };
   startHud(room, () => hole, view);
+  startRecap(room);
   startItemSlot(room);
   startKillFeed(room);
   startEmoteWheel(room);

@@ -134,6 +134,14 @@
       #scoreboard td.under { color: #7dff7d; }
       #scoreboard td.over { color: #ffb080; }
       #scoreboard .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
+      #scoreboard .panel { max-height: 100%; overflow-y: auto; }
+      #recap { margin-top: 16px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); max-width: 640px; }
+      #recap h3 { margin: 8px 0; text-align: center; }
+      #recap .recap-list { margin: 0; padding: 0; list-style: none; }
+      #recap .recap-list li { padding: 3px 0; }
+      #recap .recap-icon { margin-right: 6px; }
+      #recap .recap-small, #recap .recap-none { color: var(--muted); font-size: 13px; text-align: center; }
+      #recap .recap-reveal { color: var(--accent); }
       #scoreboard-footer { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 14px; }
       #gods-banner {
         position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%); z-index: 15; pointer-events: none;
@@ -262,6 +270,7 @@
       <div class="panel">
         <h2 id="scoreboard-title"></h2>
         <table id="scoreboard-table"></table>
+        <div id="recap" hidden></div>
         <p id="scoreboard-footer"></p>
       </div>
     </div>

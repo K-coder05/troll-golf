@@ -3,10 +3,11 @@ import { MAX_PLAYERS, type JoinOptions } from "@troll-golf/shared";
 import { isAdminSecret } from "../admin/auth";
 import { adminBundlePath, issueAdminBundleToken } from "../admin/bundle";
 import { courses, defaultCourse } from "../courses";
-import { createGame, mathRandomRng, systemClock, type Game, type GameEvent } from "../simulation";
+import { createGame, mathRandomRng, sessionLogText, systemClock, type Game, type GameEvent } from "../simulation";
 import { claimRoomCode, releaseRoomCode } from "./roomCodes";
 import { recipientsFor } from "./routeEvents";
 import { RoomStateSchema } from "./schema";
+import { sessionLogDir, writeSessionLog } from "./sessionLog";
 import { syncState } from "./syncState";
 
 const STEP_MS = 1000 / 60;
@@ -33,6 +34,8 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
   private adminLogWritten = 0;
   /** How many Item log entries have been written to the server log. */
   private itemLogWritten = 0;
+  /** The session log file has been written (once, at game end or when the room closes). */
+  private sessionLogSaved = false;
 
   override onCreate(): void {
     const code = claimRoomCode();
@@ -90,6 +93,13 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
       this.flush();
     });
 
+    // The Admin's Troll Recap reveal switch: the simulation checks that the sender is the Admin.
+    this.onMessage("reveal", (client, message: unknown) => {
+      const { enabled } = (message ?? {}) as { enabled?: unknown };
+      this.game.handleIntent(client.sessionId, { type: "reveal", enabled });
+      this.flush();
+    });
+
     this.setPatchRate(PATCH_MS);
     this.setSimulationInterval((dtMs) => this.tick(dtMs), STEP_MS);
   }
@@ -144,6 +154,8 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
   }
 
   override onDispose(): void {
+    // A room that closes before the game ends still leaves its (partial) log behind.
+    this.saveSessionLog();
     releaseRoomCode(this.roomId);
   }
 
@@ -163,6 +175,21 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     const itemLog = this.game.getItemLog();
     while (this.itemLogWritten < itemLog.length) {
       console.info(`[item-log] room=${this.roomId} ${JSON.stringify(itemLog[this.itemLogWritten++])}`);
+    }
+    if (this.game.getState().phase === "gameEnd") this.saveSessionLog();
+  }
+
+  /** Write the full session log to SESSION_LOG_DIR (default ./logs), once. Skipped if nothing was logged. */
+  private saveSessionLog(): void {
+    if (this.sessionLogSaved) return;
+    const records = this.game.getSessionLog();
+    if (records.length <= 1 && this.game.getState().phase !== "gameEnd") return;
+    this.sessionLogSaved = true;
+    try {
+      const file = writeSessionLog(sessionLogDir(), this.roomId, sessionLogText(records));
+      console.info(`[session-log] room=${this.roomId} saved ${file}`);
+    } catch (error) {
+      console.error(`[session-log] room=${this.roomId} could not save the log`, error);
     }
   }
 

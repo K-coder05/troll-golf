@@ -27,6 +27,7 @@ import {
   type NukeAftermath,
   type PaintStrokeEdit,
   type PlayerState,
+  type Recap,
   type RoomState,
   type TerrainEdit,
   type Vec2,
@@ -53,6 +54,7 @@ import { EFFECT_DEFINITIONS } from "./effectKinds";
 import { createEffectSystem, type EffectLogEntry } from "./effects";
 import { ITEM_HANDLERS } from "./itemHandlers";
 import { createItemSystem, type ItemBallControl, type ItemHandlerRegistry, type ItemLogEntry } from "./items";
+import { buildSessionLog, computeRecap, sessionLogText, type SessionLogRecord } from "./recap";
 import { PHYSICS_STEP_MS, PhysicsWorld } from "./physics";
 import { ADMIN_POWERS } from "./powers";
 import type { Rng } from "./random";
@@ -171,6 +173,15 @@ export interface Game {
   getHeldItem(playerId: string): ItemId | null;
   /** Every Effect start and end so far, with sources. Server-only, never synced (ticket 23's Recap, 20's x-ray). */
   getEffectLog(): readonly EffectLogEntry[];
+  /**
+   * The Troll Recap as it is (or would be) sent now. Without the reveal it
+   * holds nothing about the Admin. Computed from the logs on every call.
+   */
+  getRecap(): Recap;
+  /** The whole session in time order (Item, Effect and Admin Power entries). Server-only: it names the Admin and rigged boxes. The adapter saves it. */
+  getSessionLog(): SessionLogRecord[];
+  /** Whether the Admin has the Recap reveal on. Server-only. */
+  isRevealOn(): boolean;
 }
 
 /**
@@ -1163,6 +1174,70 @@ export function createGame(options: CreateGameOptions): Game {
     state.phaseEndsAt = 0;
     state.holeEndsAt = 0;
     emit({ type: "feed", payload: { text: "Game over" }, audience: everyone });
+    // The Troll Recap goes to everyone; the Admin alone also gets the full log to download.
+    emit({ type: "recap", payload: currentRecap(), audience: everyone });
+    emitSessionLog();
+  }
+
+  // ---- Troll Recap and session log (ticket 23) ----
+
+  /** The Admin's Recap reveal switch. Server-only, never synced. */
+  let revealOn = false;
+
+  const roster = () => Object.values(state.players).map((p) => ({ id: p.id, name: p.name }));
+
+  function currentRecap(): Recap {
+    return computeRecap({
+      players: roster(),
+      itemLog: items.log,
+      effectLog: effects.log,
+      adminLog: admin.log,
+      adminId: admin.adminId,
+      reveal: revealOn,
+    });
+  }
+
+  function currentSessionLog(): SessionLogRecord[] {
+    return buildSessionLog({
+      room: options.code,
+      courseId: course.id,
+      now: clock.now(),
+      players: roster(),
+      adminId: admin.adminId,
+      reveal: revealOn,
+      complete: state.phase === "gameEnd",
+      itemLog: items.log,
+      effectLog: effects.log,
+      adminLog: admin.log,
+    });
+  }
+
+  function emitSessionLog(): void {
+    emit({
+      type: "sessionLog",
+      payload: { filename: `troll-golf-${options.code}-${clock.now()}.jsonl`, text: sessionLogText(currentSessionLog()) },
+      audience: toAdmin,
+    });
+  }
+
+  /**
+   * Admin only: switch the Recap reveal. Allowed in any phase. Once the game
+   * has ended, a change re-sends the Recap to everyone, so the Admin can drop
+   * the punchline whenever the room is still looking at the results. A
+   * non-Admin gets a plain rejection and nothing is emitted.
+   */
+  function setReveal(playerId: string, enabled: unknown): IntentResult {
+    if (!state.players[playerId]) return { ok: false, reason: "unknown_player" };
+    if (!admin.isAdmin(playerId)) return { ok: false, reason: "not_admin" };
+    if (typeof enabled !== "boolean") {
+      emit({ type: "adminResult", payload: { ok: false, power: "reveal", reason: "invalid_payload" }, audience: toAdmin });
+      return { ok: false, reason: "invalid_payload" };
+    }
+    const changed = enabled !== revealOn;
+    revealOn = enabled;
+    emit({ type: "revealState", payload: { enabled }, audience: toAdmin });
+    if (changed && state.phase === "gameEnd") emit({ type: "recap", payload: currentRecap(), audience: everyone });
+    return { ok: true };
   }
 
   /** Moves the flow on when a phase's time is up or everyone has Holed Out. */
@@ -1256,6 +1331,14 @@ export function createGame(options: CreateGameOptions): Game {
     emit({ type: "hole", payload: { holeIndex: state.holeIndex, hole: currentHole() }, audience: toPlayer(playerId) });
     // Their own item slot (kept through a disconnect), to them alone.
     items.sendSlot(playerId);
+    // Joining or reconnecting after the game ended: show them the Recap too.
+    if (state.phase === "gameEnd") {
+      emit({ type: "recap", payload: currentRecap(), audience: toPlayer(playerId) });
+    }
+    if (admin.isAdmin(playerId)) {
+      emit({ type: "revealState", payload: { enabled: revealOn }, audience: toAdmin });
+      if (state.phase === "gameEnd") emitSessionLog();
+    }
   }
 
   /**
@@ -1785,6 +1868,8 @@ export function createGame(options: CreateGameOptions): Game {
           return emote(playerId, intent.kind);
         case "admin":
           return admin.use(playerId, intent);
+        case "reveal":
+          return setReveal(playerId, intent.enabled);
         default:
           return { ok: false, reason: "invalid_payload" };
       }
@@ -1839,6 +1924,9 @@ export function createGame(options: CreateGameOptions): Game {
     getEffectLog() {
       return effects.log;
     },
+    getRecap: currentRecap,
+    getSessionLog: currentSessionLog,
+    isRevealOn: () => revealOn,
   };
 }
 

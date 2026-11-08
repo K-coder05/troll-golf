@@ -1,6 +1,7 @@
 import type { AdminMessage, AdminMode, AdminResultMessage, Phase } from "@troll-golf/shared";
 import type { AdminHost } from "../adminHost";
 import { ADMIN_POWER_PANELS } from "./powers";
+import { createRecapControls } from "./recapControls";
 import type { AdminPowerPanel, PanelContext, PlayerView } from "./powers/types";
 
 const HOTBAR_KEY = "troll-golf:hotbar";
@@ -43,7 +44,7 @@ export function startConsole(host: AdminHost): ConsoleController {
   const results = el("ul", "tga-results");
   const help = el("div", "tga-muted");
   help.textContent = "` close · 1–9 hotbar · Caps Lock = Loud · Alt+X x-ray";
-  root.append(header, hotbarRow, list, panelBox, results, help);
+  root.append(header, hotbarRow, list, panelBox, createRecapControls(room), results, help);
   document.body.append(root);
 
   const players = (): PlayerView[] => {

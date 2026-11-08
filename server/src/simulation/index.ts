@@ -56,3 +56,11 @@ export { EFFECT_DEFINITIONS } from "./effectKinds";
 export { everyone, toPlayer, toAdmin, type Audience, type GameEvent } from "./events";
 export { createSeededRng, mathRandomRng, type Rng } from "./random";
 export { ManualClock, systemClock, type Clock } from "./clock";
+export {
+  buildSessionLog,
+  computeRecap,
+  sessionLogText,
+  type RecapInput,
+  type SessionLogInput,
+  type SessionLogRecord,
+} from "./recap";
