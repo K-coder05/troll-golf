@@ -24,8 +24,8 @@ export type Intent =
   | { type: "reconnect" }
   /** Start the game from the lobby. Only the room creator (state.creatorId) may. */
   | { type: "start" }
-  /** Change lobby settings (room creator only, lobby only). Ticket 24 adds chaosLevel. */
-  | { type: "configure"; courseId?: string }
+  /** Change lobby settings (room creator only, lobby only). */
+  | { type: "configure"; courseId?: string; chaosLevel?: string }
   /** angle: radians, direction of travel (0 = +x, clockwise on screen). power: 0..1 of max. */
   | { type: "shoot"; angle: number; power: number }
   /**

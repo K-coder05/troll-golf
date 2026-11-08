@@ -50,7 +50,7 @@
       #lobby-players .dot, #standings .dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; }
       .tag { margin-left: auto; font-size: 12px; color: var(--muted); }
       select { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d6b49; background: #0e2416; color: var(--text); }
-      #lobby-course-name { padding: 8px 0; font-weight: 600; }
+      #lobby-course-name, #lobby-chaos-name { padding: 8px 0; font-weight: 600; }
       #lobby-wait { margin: 0; text-align: center; color: var(--muted); font-size: 14px; }
       #standings {
         position: fixed; top: 12px; right: 12px; min-width: 180px; max-width: 45%; padding: 6px 10px; border-radius: 6px;
@@ -242,6 +242,14 @@
           <select id="lobby-course"></select>
         </label>
         <div id="lobby-course-name"></div>
+        <label>Chaos level
+          <select id="lobby-chaos">
+            <option value="chill">Chill (0.6x)</option>
+            <option value="normal">Normal (1x)</option>
+            <option value="unhinged">Unhinged (1.5x)</option>
+          </select>
+        </label>
+        <div id="lobby-chaos-name"></div>
         <button id="start" type="button">Start game</button>
         <p id="lobby-wait"></p>
         <button id="leave" type="button" class="secondary">Leave</button>

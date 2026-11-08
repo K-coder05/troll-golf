@@ -20,7 +20,7 @@ export const golfGun: ItemHandler<"golfGun"> = {
     const shots = def.params.shots ?? 3;
     if (!ctx.active) {
       if (user.spectating) return { ok: false, reason: "spectating" };
-      ctx.setActive({ until: ctx.now() + def.durationMs, shotsLeft: shots });
+      ctx.setActive({ until: ctx.now() + ctx.scaleDuration(def.durationMs), shotsLeft: shots });
       return { ok: true, keep: true, summary: `${user.name}: Golf Gun armed` };
     }
 

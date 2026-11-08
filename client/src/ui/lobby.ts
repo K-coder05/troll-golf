@@ -1,11 +1,12 @@
 import type { Room } from "@colyseus/sdk";
-import type { ConfigureMessage, CourseSummary, Phase, StartMessage } from "@troll-golf/shared";
+import type { ChaosLevel, ConfigureMessage, CourseSummary, Phase, StartMessage } from "@troll-golf/shared";
 
 /** The decoded synced state, as the lobby reads it. */
 interface SyncedState {
   phase: Phase;
   creatorId: string;
   courseId: string;
+  settings: { chaosLevel: ChaosLevel | string };
   players: {
     size: number;
     forEach(cb: (player: { name: string; color: string; connected: boolean }, id: string) => void): void;
@@ -36,6 +37,9 @@ export function startLobby(room: Room, options: LobbyOptions): void {
     course: $<HTMLSelectElement>("lobby-course"),
     courseLabel: $("lobby-course").parentElement!,
     courseName: $("lobby-course-name"),
+    chaos: $<HTMLSelectElement>("lobby-chaos"),
+    chaosLabel: $("lobby-chaos").parentElement!,
+    chaosName: $("lobby-chaos-name"),
     start: $<HTMLButtonElement>("start"),
     wait: $("lobby-wait"),
     copy: $<HTMLButtonElement>("copy-link"),
@@ -55,6 +59,9 @@ export function startLobby(room: Room, options: LobbyOptions): void {
   });
   els.course.addEventListener("change", () => {
     room.send("configure", { courseId: els.course.value } satisfies ConfigureMessage);
+  });
+  els.chaos.addEventListener("change", () => {
+    room.send("configure", { chaosLevel: els.chaos.value as ChaosLevel } satisfies ConfigureMessage);
   });
   els.start.addEventListener("click", () => {
     els.start.disabled = true;
@@ -117,6 +124,11 @@ export function startLobby(room: Room, options: LobbyOptions): void {
     els.courseName.textContent = isCreator ? "" : `Course: ${current ? describe(current) : state.courseId}`;
     els.courseLabel.hidden = !isCreator;
     els.courseName.hidden = isCreator;
+    const chaos = state.settings.chaosLevel;
+    if (els.chaos.value !== chaos && document.activeElement !== els.chaos) els.chaos.value = chaos;
+    els.chaosName.textContent = isCreator ? "" : `Chaos level: ${chaos.charAt(0).toUpperCase()}${chaos.slice(1)}`;
+    els.chaosLabel.hidden = !isCreator;
+    els.chaosName.hidden = isCreator;
     els.start.hidden = !isCreator;
 
     const creatorName = state.players.get(state.creatorId)?.name ?? "the room creator";

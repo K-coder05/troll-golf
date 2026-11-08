@@ -75,10 +75,11 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     });
     // Lobby: the simulation checks that only the room creator may do these.
     this.onMessage("configure", (client, message: unknown) => {
-      const { courseId } = (message ?? {}) as { courseId?: unknown };
+      const { courseId, chaosLevel } = (message ?? {}) as { courseId?: unknown; chaosLevel?: unknown };
       this.game.handleIntent(client.sessionId, {
         type: "configure",
         courseId: courseId === undefined ? undefined : String(courseId),
+        chaosLevel: chaosLevel === undefined ? undefined : String(chaosLevel),
       });
       this.flush();
     });

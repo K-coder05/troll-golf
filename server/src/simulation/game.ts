@@ -2,6 +2,8 @@ import {
   BALL_RADIUS,
   distanceToSegmentSq,
   ITEM_CATALOGUE,
+  CHAOS_FACTORS,
+  isChaosLevel,
   ITEM_TUNING,
   MAGNET_ACCEL,
   MAGNET_RANGE,
@@ -321,6 +323,7 @@ export function createGame(options: CreateGameOptions): Game {
     clock,
     emit,
     registry: EFFECT_DEFINITIONS,
+    durationScale: () => CHAOS_FACTORS[state.settings.chaosLevel].duration,
     balls: {
       pin(playerId, pinned) {
         if (!physics.hasBall(playerId)) return;
@@ -1286,12 +1289,17 @@ export function createGame(options: CreateGameOptions): Game {
   }
 
   /**
-   * Lobby settings, room creator only. For now just the Course; ticket 24 adds
-   * the chaos level here. A new Course resets the lobby to its first Hole.
+   * Lobby settings, room creator only. The Course and the chaos level. A new Course resets the lobby to its first Hole.
    */
-  function configure(playerId: string, courseId: string | undefined): IntentResult {
+  function configure(playerId: string, courseId: string | undefined, chaosLevel: string | undefined): IntentResult {
     const allowed = checkCreator(playerId);
     if (!allowed.ok) return allowed;
+    if (chaosLevel !== undefined && !isChaosLevel(chaosLevel)) return { ok: false, reason: "invalid_payload" };
+    if (courseId !== undefined && (typeof courseId !== "string" || !catalogue[courseId])) return { ok: false, reason: "unknown_course" };
+    if (chaosLevel !== undefined && chaosLevel !== state.settings.chaosLevel) {
+      state.settings.chaosLevel = chaosLevel;
+      items.setupHole(currentHole()); // the box count follows the level
+    }
     if (courseId === undefined) return { ok: true };
     const next = typeof courseId === "string" ? catalogue[courseId] : undefined;
     if (!next) return { ok: false, reason: "unknown_course" };
@@ -1855,7 +1863,7 @@ export function createGame(options: CreateGameOptions): Game {
         case "start":
           return start(playerId);
         case "configure":
-          return configure(playerId, intent.courseId);
+          return configure(playerId, intent.courseId, intent.chaosLevel);
         case "shoot":
           return shoot(playerId, intent.angle, intent.power);
         case "useItem":

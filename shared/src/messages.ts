@@ -9,6 +9,7 @@
 import type { AdminBundleMessage, AdminMessage, AdminResultMessage, BannerMessage, XrayMessage } from "./admin";
 import type { HoleData } from "./course";
 import type { Recap, RevealMessage, RevealStateMessage, SessionLogMessage } from "./recap";
+import type { ChaosLevel } from "./state";
 import type { ItemDeniedMessage, ItemId, ItemSlotMessage, UseItemMessage } from "./items";
 
 /** The single Colyseus room type. */
@@ -36,9 +37,10 @@ export interface ShootMessage {
   power: number;
 }
 
-/** Lobby settings the room creator changes. Fields left out stay as they are. Ticket 24 adds the chaos level. */
+/** Lobby settings the room creator changes. Fields left out stay as they are. */
 export interface ConfigureMessage {
   courseId?: string;
+  chaosLevel?: ChaosLevel;
 }
 
 /** A mash click while Frozen (no payload). */

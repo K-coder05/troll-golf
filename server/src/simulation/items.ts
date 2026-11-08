@@ -2,7 +2,9 @@ import {
   BALL_RADIUS,
   GOLF_GODS_BANNER,
   type AdminMode,
+  CHAOS_FACTORS,
   ITEM_CATEGORIES,
+  tuningForChaos,
   type HoleData,
   type ItemCatalogue,
   type ItemCategory,
@@ -143,7 +145,9 @@ export interface ItemContext {
   hit(targetId: string, land: () => void): ItemHitResult;
   /** Opponents this Item may target right now, best Standing first (Swap picks from these). */
   targets(): PlayerState[];
-  /** Lay a Banana Mine at `at` for the user; it lasts `def.durationMs`. */
+  /** A duration in ms scaled by the chaos level (for timers that are not Effects, e.g. the Golf Gun window). */
+  scaleDuration(ms: number): number;
+  /** Lay a Banana Mine at `at` for the user; it lasts `def.durationMs` scaled by the chaos level. */
   placeTrap(at: Vec2): void;
 }
 
@@ -372,7 +376,11 @@ export interface ItemSystem {
 }
 
 export function createItemSystem(options: ItemSystemOptions): ItemSystem {
-  const { state, clock, rng, emit, catalogue, tuning, handlers } = options;
+  const { state, clock, rng, emit, catalogue, handlers } = options;
+  // The tuning in force: the base data scaled by the room's chaos level (it can only change in the lobby).
+  const chaosScale = () => CHAOS_FACTORS[state.settings.chaosLevel].duration;
+  const tuningNow = () => tuningForChaos(options.tuning, state.settings.chaosLevel);
+  const { rouletteMs, boxRespawnMs, boxRadius } = options.tuning;
   // The held Items, by Player id: per-Player simulation state that a
   // disconnect doesn't touch, so a reconnect gets it back. Never synced.
   const slots = new Map<string, { item: ItemId; readyAt: number; active?: ItemActive }>();
@@ -412,16 +420,16 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     const forced = rigged.get(player.id);
     // The draw always happens, so the Rng stream is the same whether or not
     // the box was rigged; a rig only replaces its result.
-    let drawn = drawItem(rng, tuning.odds, row, catalogue, available);
+    let drawn = drawItem(rng, tuningNow().odds, row, catalogue, available);
     if (forced) {
       rigged.delete(player.id);
       drawn = { category: catalogue[forced].category, item: forced };
     }
     if (!drawn) return; // nothing can come from a box: the box stays
     box.active = false;
-    box.respawnAt = now + tuning.boxRespawnMs;
+    box.respawnAt = now + boxRespawnMs;
     emit({ type: "fx", payload: { kind: "itemBox", x: box.x, y: box.y }, audience: everyone });
-    slots.set(player.id, { item: drawn.item, readyAt: now + tuning.rouletteMs });
+    slots.set(player.id, { item: drawn.item, readyAt: now + rouletteMs });
     log.push({
       kind: "pickup",
       at: now,
@@ -522,7 +530,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     for (const p of Object.values(state.players)) {
       if (!p.holedOut && !p.spectating && Math.hypot(p.ball.x - at.x, p.ball.y - at.y) <= trapReach) exempt.add(p.id);
     }
-    state.traps.push({ id, x: at.x, y: at.y, expiresAt: clock.now() + trapDef.durationMs });
+    state.traps.push({ id, x: at.x, y: at.y, expiresAt: clock.now() + Math.round(trapDef.durationMs * chaosScale()) });
     trapOwners.set(id, { ownerId, exempt });
   }
 
@@ -582,7 +590,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     setupHole(hole) {
       state.traps = [];
       trapOwners.clear();
-      const points = state.settings.itemsEnabled ? chooseBoxSpawns(hole.itemBoxes, tuning.boxCountScale, rng) : [];
+      const points = state.settings.itemsEnabled ? chooseBoxSpawns(hole.itemBoxes, tuningNow().boxCountScale, rng) : [];
       state.itemBoxes = points.map((p, id) => ({ id, x: p.x, y: p.y, active: true, respawnAt: 0 }));
     },
     expireActive() {
@@ -604,7 +612,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     },
     rollThrough(player, from, to) {
       if (slots.has(player.id) || player.holedOut || player.spectating || !player.connected) return;
-      const reach = tuning.boxRadius + BALL_RADIUS;
+      const reach = boxRadius + BALL_RADIUS;
       for (const box of state.itemBoxes) {
         if (!box.active || segmentDistance(box, from, to) > reach) continue;
         pickUp(player, box);
@@ -643,6 +651,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
         },
         ...(target ? { target } : {}),
         now: () => clock.now(),
+        scaleDuration: (ms) => Math.round(ms * chaosScale()),
         rng,
         emit,
         updateStandings: options.updateStandings,

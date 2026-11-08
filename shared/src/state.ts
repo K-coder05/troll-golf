@@ -8,11 +8,12 @@
  */
 
 import type { EffectState } from "./effects";
+import type { ChaosLevelId } from "./items";
 import type { TerrainEdit } from "./terrain";
 
 export type Phase = "lobby" | "countdown" | "playing" | "holeEnd" | "gameEnd";
 
-export type ChaosLevel = "chill" | "normal" | "unhinged";
+export type ChaosLevel = ChaosLevelId;
 
 export interface GameSettings {
   chaosLevel: ChaosLevel;

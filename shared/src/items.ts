@@ -224,6 +224,59 @@ export const ITEM_TUNING: ItemTuning = {
   rouletteMs: 1500,
 };
 
+// ---- Chaos level --------------------------------------------------------------
+
+/** The lobby's chaos level, picked by the room creator (also in GameSettings). */
+export type ChaosLevelId = "chill" | "normal" | "unhinged";
+
+export const CHAOS_LEVELS: readonly ChaosLevelId[] = ["chill", "normal", "unhinged"];
+
+/**
+ * What a chaos level multiplies: Item Box count, the attack column of the odds
+ * table and Item Effect durations. Admin Powers are never scaled.
+ */
+export const CHAOS_FACTORS: { readonly [L in ChaosLevelId]: { boxes: number; attack: number; duration: number } } = {
+  chill: { boxes: 0.6, attack: 0.6, duration: 0.6 },
+  normal: { boxes: 1, attack: 1, duration: 1 },
+  unhinged: { boxes: 1.5, attack: 1.5, duration: 1.5 },
+};
+
+export function isChaosLevel(value: unknown): value is ChaosLevelId {
+  return typeof value === "string" && (CHAOS_LEVELS as readonly string[]).includes(value);
+}
+
+/**
+ * The odds table for a chaos level. Each row's attack chance is multiplied by
+ * the level's attack factor (capped at 100), and the self and chaos chances
+ * share what is left in their original proportions, so every row still adds
+ * up to 100.
+ */
+export function scaleOdds(odds: OddsTable, level: ChaosLevelId): OddsTable {
+  const factor = CHAOS_FACTORS[level].attack;
+  const row = (r: OddsTable[OddsRow]): OddsTable[OddsRow] => {
+    const attack = Math.min(100, r.attack * factor);
+    const others = r.self + r.chaos;
+    if (others <= 0) return { self: 0, attack: 100, chaos: 0 };
+    const left = 100 - attack;
+    return { self: (r.self / others) * left, attack, chaos: (r.chaos / others) * left };
+  };
+  return { first: row(odds.first), middle: row(odds.middle), last: row(odds.last) };
+}
+
+/**
+ * The tuning in force at a chaos level: scaled odds and box count. The box
+ * count is a fraction of the Hole's spawn points, so it cannot go above 1:
+ * Unhinged fills every spawn point, as Normal already does at the default
+ * boxCountScale of 1.
+ */
+export function tuningForChaos(tuning: ItemTuning, level: ChaosLevelId): ItemTuning {
+  return {
+    ...tuning,
+    odds: scaleOdds(tuning.odds, level),
+    boxCountScale: Math.min(1, tuning.boxCountScale * CHAOS_FACTORS[level].boxes),
+  };
+}
+
 // ---- Messages ---------------------------------------------------------------
 
 /**
