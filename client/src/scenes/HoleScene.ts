@@ -7,6 +7,7 @@ import {
   type HoleMessage,
   type Phase,
   type ShootMessage,
+  type UseItemMessage,
   type SurfaceKind,
   type PaintStrokeEdit,
   slidingWallCentre,
@@ -21,6 +22,7 @@ import {
 import * as Phaser from "phaser";
 import { startSiren } from "../fx/siren";
 import { ITEM_RENDERERS } from "../items";
+import { crosshair } from "../items/golfGun";
 import { SnapshotBuffer, type Point } from "../net/interpolation";
 import type { AdminHit, AdminView } from "../adminHost";
 import type { HudView } from "../ui/hud";
@@ -205,6 +207,12 @@ export class HoleScene extends Phaser.Scene {
       if (picker?.isOpen) {
         const id = this.ballNear(this.worldPoint(pointer), picker.targets().map((t) => t.id));
         if (id) picker.pick(id);
+        return;
+      }
+      // Golf Gun armed: a click is a shot at that point (the server hit-tests the balls).
+      if (crosshair.armed) {
+        const world = this.worldPoint(pointer);
+        this.room.send("useItem", { point: { x: world.x, y: world.y } } satisfies UseItemMessage);
         return;
       }
       // Frozen: every click is a mash to break out sooner.

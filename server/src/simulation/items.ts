@@ -64,6 +64,21 @@ export interface ItemBallControl {
    * holding is let go first.
    */
   placeAtRest(playerId: string, at: Vec2): Vec2;
+  /**
+   * Knock the Player's ball: add `delta` to its velocity (it wakes up if
+   * resting). If it ends in Water or Void soon after, the feed says `byName`
+   * sniped it there.
+   */
+  push(playerId: string, delta: Vec2, byName: string): void;
+  /** Where the Cup is now (a Holed-Out Golf Gun shooter fires from it). */
+  cupPosition(): Vec2;
+}
+
+/** An Item in use that stays held for a while (Golf Gun crosshair mode). */
+export interface ItemActive {
+  /** Clock time (ms) it runs out. */
+  until: number;
+  shotsLeft: number;
 }
 
 /** The validated use request: a target for opponent Items, a point for aimed and placed ones. */
@@ -96,6 +111,10 @@ export interface ItemContext {
   /** The Item's data (duration, params...). */
   readonly def: ItemDefinition;
   readonly request: ItemUseRequest;
+  /** This Item's in-use state, if a previous use left it armed (see `setActive`). */
+  readonly active: ItemActive | null;
+  /** Arm (or update) the in-use state; null clears it. Use with `keep: true`. The system uses the Item up when `until` passes. */
+  setActive(active: ItemActive | null): void;
   now(): number;
   readonly rng: Rng;
   emit(event: GameEvent): void;
@@ -283,6 +302,8 @@ export interface ItemSystem {
   setupHole(hole: HoleData): void;
   /** Shattered boxes whose time is up come back. Call while playing. */
   respawnBoxes(): void;
+  /** Items in use whose time is up (or whose Hole is over) are used up. Call every step. */
+  expireActive(): void;
   /**
    * A ball in play moved from `from` to `to` this physics step: it picks up
    * from the first active box it passed through, if its slot is empty. Only
@@ -325,7 +346,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
   const { state, clock, rng, emit, catalogue, tuning, handlers } = options;
   // The held Items, by Player id: per-Player simulation state that a
   // disconnect doesn't touch, so a reconnect gets it back. Never synced.
-  const slots = new Map<string, { item: ItemId; readyAt: number }>();
+  const slots = new Map<string, { item: ItemId; readyAt: number; active?: ItemActive }>();
   // Rig the Box: the Item each Player's next box gives. Server-only.
   const rigged = new Map<string, ItemId>();
   const log: ItemLogEntry[] = [];
@@ -339,7 +360,12 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     const slot = slots.get(playerId);
     emit({
       type: "item",
-      payload: { item: slot?.item ?? null, roulette, readyAt: slot?.readyAt ?? 0 },
+      payload: {
+        item: slot?.item ?? null,
+        roulette,
+        readyAt: slot?.readyAt ?? 0,
+        ...(slot?.active ? { active: { shotsLeft: slot.active.shotsLeft, endsAt: slot.active.until } } : {}),
+      },
       audience: toPlayer(playerId),
     });
   }
@@ -443,6 +469,15 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
       const points = state.settings.itemsEnabled ? chooseBoxSpawns(hole.itemBoxes, tuning.boxCountScale, rng) : [];
       state.itemBoxes = points.map((p, id) => ({ id, x: p.x, y: p.y, active: true, respawnAt: 0 }));
     },
+    expireActive() {
+      const now = clock.now();
+      for (const [playerId, slot] of [...slots]) {
+        if (!slot.active) continue;
+        if (now < slot.active.until && state.phase === "playing") continue;
+        slots.delete(playerId);
+        sendSlot(playerId);
+      }
+    },
     respawnBoxes() {
       const now = clock.now();
       for (const box of state.itemBoxes) {
@@ -485,6 +520,11 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
         user,
         def,
         request,
+        active: slot.active ?? null,
+        setActive(active) {
+          if (active) slot.active = active;
+          else delete slot.active;
+        },
         ...(target ? { target } : {}),
         now: () => clock.now(),
         rng,
@@ -496,10 +536,8 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
         targets: () => targetsFor(playerId, def.id),
       });
       if (!outcome.ok) return deny(playerId, slot.item, outcome.reason);
-      if (!outcome.keep) {
-        slots.delete(playerId);
-        sendSlot(playerId);
-      }
+      if (!outcome.keep) slots.delete(playerId);
+      sendSlot(playerId);
       log.push({
         kind: "use",
         at: clock.now(),

@@ -92,7 +92,7 @@ export const ITEM_CATALOGUE: ItemCatalogue = {
     disabling: false,
     counters: ["Shield blocks one shot"],
     weight: 3,
-    params: { shots: 3 },
+    params: { shots: 3, pushSpeed: 700, aimTolerance: 32 },
   },
   inkSplat: {
     id: "inkSplat",
@@ -242,6 +242,11 @@ export interface ItemSlotMessage {
   item: ItemId | null;
   roulette: boolean;
   readyAt: number;
+  /**
+   * An Item in use that stays in the slot (Golf Gun crosshair mode): shots
+   * left and the server clock time it runs out. Absent when not in use.
+   */
+  active?: { shotsLeft: number; endsAt: number };
 }
 
 /** Server -> the holder only: a use was refused; the Item is still held. */

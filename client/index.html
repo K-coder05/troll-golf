@@ -129,6 +129,7 @@
       #gods-detail:empty { display: none; }
       @keyframes gods-in { from { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
       @media (max-width: 600px) { #gods-text { font-size: 20px; } #gods-banner { white-space: normal; width: calc(100% - 32px); } }
+      body.crosshair, body.crosshair canvas { cursor: crosshair !important; }
       #item-slot {
         position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 5;
         width: 76px; height: 76px; border-radius: 14px; display: grid; place-items: center; align-content: center;

@@ -6,8 +6,10 @@ import {
   type ItemDeniedMessage,
   type ItemId,
   type ItemSlotMessage,
+  type TimeMessage,
   type UseItemMessage,
 } from "@troll-golf/shared";
+import { crosshair } from "../items/golfGun";
 import { startTargetPicker } from "./targetPicker";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -44,6 +46,15 @@ export function startItemSlot(room: Room): void {
   let spinUntil = 0;
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
   const picker = startTargetPicker(room);
+  // Golf Gun crosshair mode: shots left and when it runs out (server clock).
+  let active: { shotsLeft: number; endsAt: number } | null = null;
+  let clockOffset = 0;
+  room.onMessage("time", (message: TimeMessage) => (clockOffset = message.now - Date.now()));
+  const setActive = (next: typeof active) => {
+    active = next;
+    crosshair.armed = next !== null;
+    document.body.classList.toggle("crosshair", next !== null);
+  };
 
   const show = (id: ItemId | null) => {
     icon.textContent = id ? ITEM_CATALOGUE[id].icon : "";
@@ -54,6 +65,7 @@ export function startItemSlot(room: Room): void {
   room.onMessage("item", (message: ItemSlotMessage) => {
     item = message.item;
     note.textContent = "";
+    setActive(message.item && message.active ? message.active : null);
     if (!item) picker.close();
     if (!message.roulette || !item) {
       spinUntil = 0;
@@ -84,6 +96,10 @@ export function startItemSlot(room: Room): void {
     requestAnimationFrame(frame);
     // Shown with the rest of the HUD (not in the lobby).
     if (slot.hidden !== hud.hidden) slot.hidden = hud.hidden;
+    if (active) {
+      const left = Math.max(0, Math.ceil((active.endsAt - (Date.now() + clockOffset)) / 1000));
+      name.textContent = `${active.shotsLeft} shot${active.shotsLeft === 1 ? "" : "s"} · ${left}s`;
+    }
     if (!spinUntil) return;
     const left = spinUntil - now;
     if (left <= 0) {
@@ -103,7 +119,7 @@ export function startItemSlot(room: Room): void {
   requestAnimationFrame(frame);
 
   const use = () => {
-    if (!item || spinUntil) return;
+    if (!item || spinUntil || active) return; // armed: clicks on the Hole are the shots
     room.send("useItem", {} satisfies UseItemMessage);
   };
   slot.addEventListener("click", use);
@@ -118,7 +134,7 @@ export function startItemSlot(room: Room): void {
     e.preventDefault();
     if (e.repeat || pressed) return;
     pressed = true;
-    if (!item || spinUntil) return;
+    if (!item || spinUntil || active) return;
     if (ITEM_CATALOGUE[item].targeting !== "opponent") {
       use();
       return;

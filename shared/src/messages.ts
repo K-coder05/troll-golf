@@ -88,6 +88,7 @@ export interface HoleMessage {
  * `itemUse`: `item` was used at (x, y); the client's renderer for that Item plays it.
  * `shieldPop`: a Shield absorbed an attack at (x, y) (the ball's spot).
  * `inkScreen`: sent to the victim of Ink Splat ONLY; their screen fills with ink.
+ * `itemUse` of the Golf Gun: a shot from (fromX, fromY) at (x, y); `hit` says it landed (screen shake).
  * `thaw`: a Freeze ended at (x, y): the ice cracks.
  */
 export interface FxMessage {
@@ -116,6 +117,10 @@ export interface FxMessage {
   /** `inkScreen` (the victim only): how long the ink lasts, ms, and the fraction of the screen it covers. */
   durationMs?: number;
   coverage?: number;
+  /** Golf Gun `itemUse`: where the shot came from, and whether it landed on a ball. */
+  fromX?: number;
+  fromY?: number;
+  hit?: boolean;
 }
 
 /**

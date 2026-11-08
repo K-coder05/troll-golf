@@ -240,6 +240,9 @@ export function createGame(options: CreateGameOptions): Game {
   // Each Player's last shot on this Hole, for Mulligan: where the ball was
   // before it and the penalty Strokes since. Cleared when a Hole (re)starts.
   const lastShots = new Map<string, { from: Vec2; penalties: number }>();
+  // Who last knocked each ball with the Golf Gun, for "sniped X into the lake". Server-only.
+  const snipers = new Map<string, { name: string; until: number }>();
+  const SNIPE_CREDIT_MS = 5000;
 
   const emit = (event: GameEvent) => events.push(event);
   // The secret Admin and the Admin Power pipeline. Server-only: nothing in here reaches RoomState.
@@ -294,6 +297,18 @@ export function createGame(options: CreateGameOptions): Game {
         return shot ? { from: { ...shot.from }, penalties: shot.penalties } : null;
       },
       clearLastShot: (playerId) => void lastShots.delete(playerId),
+      push(playerId, delta, byName) {
+        const player = state.players[playerId];
+        if (!player || !physics.hasBall(playerId)) return;
+        physics.addVelocity(playerId, delta);
+        const motion = physics.motion(playerId);
+        player.ball.vx = motion.vx;
+        player.ball.vy = motion.vy;
+        player.ball.atRest = false;
+        slowSteps.set(playerId, 0);
+        snipers.set(playerId, { name: byName, until: clock.now() + SNIPE_CREDIT_MS });
+      },
+      cupPosition: () => ({ x: state.cup.x, y: state.cup.y }),
       placeAtRest(playerId, at) {
         const player = state.players[playerId]!;
         // The Admin loses their grip on it.
@@ -689,6 +704,7 @@ export function createGame(options: CreateGameOptions): Game {
     }
     // This Hole's shots are wiped: nothing left to take back.
     lastShots.clear();
+    snipers.clear();
     state.holeEndsAt = clock.now() + state.settings.holeTimerSec * 1000;
     state.phaseEndsAt = state.holeEndsAt;
   }
@@ -838,6 +854,7 @@ export function createGame(options: CreateGameOptions): Game {
     pendingLipOut.clear();
     poppedOut.clear();
     lastShots.clear();
+    snipers.clear();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
     items.setupHole(hole);
@@ -965,6 +982,7 @@ export function createGame(options: CreateGameOptions): Game {
     pendingLipOut.clear();
     poppedOut.clear();
     lastShots.clear();
+    snipers.clear();
     effects.clearAll();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
@@ -1171,9 +1189,16 @@ export function createGame(options: CreateGameOptions): Game {
     slowSteps.set(player.id, 0);
     insidePads.delete(player.id);
     portalLocked.delete(player.id);
+    const sniper = snipers.get(player.id);
+    snipers.delete(player.id);
+    const sniped = sniper !== undefined && clock.now() <= sniper.until;
     emit({
       type: "feed",
-      payload: { text: `${player.name} ${kind === "void" ? "fell into the void" : "landed in the water"} (+1)` },
+      payload: {
+        text: sniped
+          ? `${sniper.name} sniped ${player.name} into the ${kind === "void" ? "void" : "lake"} (+1)`
+          : `${player.name} ${kind === "void" ? "fell into the void" : "landed in the water"} (+1)`,
+      },
       audience: everyone,
     });
   }
@@ -1399,6 +1424,7 @@ export function createGame(options: CreateGameOptions): Game {
         items.respawnBoxes();
         effects.expire();
       }
+      items.expireActive();
       advancePhase();
       updateStandings();
     },
