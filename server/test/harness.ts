@@ -1,4 +1,4 @@
-import type { AdminMode, AdminPowerId, AdminPowerParams, CourseData, GameSettings } from "@troll-golf/shared";
+import { ITEM_TUNING, type AdminMode, type AdminPowerId, type AdminPowerParams, type CourseData, type GameSettings } from "@troll-golf/shared";
 import { placeholderCourse } from "../src/courses/placeholder";
 import {
   COUNTDOWN_MS,
@@ -41,7 +41,9 @@ export class TestGame {
       settings: options.settings,
       rng: createSeededRng(options.seed ?? 1),
       clock: this.clock,
-      items: options.items,
+      // Scenario courses have a couple of spawn points and tests count on every one having a box;
+      // the shipped base scale (below 1) is exercised on the v1 Course in chaos.test.ts.
+      items: { ...options.items, tuning: options.items?.tuning ?? { ...ITEM_TUNING, boxCountScale: 1 } },
     });
   }
 

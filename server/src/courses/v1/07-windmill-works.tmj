@@ -1,0 +1,246 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 40,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Windmill Works"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 624,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 7,
+     "class": "Wall",
+     "x": 560,
+     "y": 150,
+     "width": 30,
+     "height": 60
+    },
+    {
+     "id": 8,
+     "class": "Wall",
+     "x": 560,
+     "y": 430,
+     "width": 30,
+     "height": 60
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 5,
+     "class": "Rough",
+     "x": 16,
+     "y": 16,
+     "width": 928,
+     "height": 60
+    },
+    {
+     "id": 6,
+     "class": "Rough",
+     "x": 16,
+     "y": 564,
+     "width": 928,
+     "height": 60
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 12,
+     "class": "Tee",
+     "x": 100,
+     "y": 320,
+     "point": true
+    },
+    {
+     "id": 13,
+     "class": "Cup",
+     "x": 870,
+     "y": 320,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "ItemBox",
+     "x": 330,
+     "y": 110,
+     "point": true
+    },
+    {
+     "id": 15,
+     "class": "ItemBox",
+     "x": 330,
+     "y": 530,
+     "point": true
+    },
+    {
+     "id": 16,
+     "class": "ItemBox",
+     "x": 600,
+     "y": 90,
+     "point": true
+    },
+    {
+     "id": 17,
+     "class": "ItemBox",
+     "x": 600,
+     "y": 550,
+     "point": true
+    },
+    {
+     "id": 18,
+     "class": "ItemBox",
+     "x": 780,
+     "y": 160,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": [
+    {
+     "id": 9,
+     "class": "Windmill",
+     "x": 330,
+     "y": 320,
+     "point": true,
+     "properties": [
+      {
+       "name": "length",
+       "type": "float",
+       "value": 220
+      },
+      {
+       "name": "thickness",
+       "type": "float",
+       "value": 14
+      },
+      {
+       "name": "speed",
+       "type": "float",
+       "value": 70
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 0
+      }
+     ]
+    },
+    {
+     "id": 10,
+     "class": "Windmill",
+     "x": 600,
+     "y": 320,
+     "point": true,
+     "properties": [
+      {
+       "name": "length",
+       "type": "float",
+       "value": 220
+      },
+      {
+       "name": "thickness",
+       "type": "float",
+       "value": 14
+      },
+      {
+       "name": "speed",
+       "type": "float",
+       "value": -90
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 45
+      }
+     ]
+    },
+    {
+     "id": 11,
+     "class": "Windmill",
+     "x": 780,
+     "y": 320,
+     "point": true,
+     "properties": [
+      {
+       "name": "length",
+       "type": "float",
+       "value": 150
+      },
+      {
+       "name": "thickness",
+       "type": "float",
+       "value": 12
+      },
+      {
+       "name": "speed",
+       "type": "float",
+       "value": 120
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

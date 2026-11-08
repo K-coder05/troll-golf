@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { convertCourse, type TiledMap } from "@troll-golf/shared";
 import { describe, expect, it } from "vitest";
-import { defaultCourse, loadCourse, sampleCourse } from "../src/courses";
+import { courses, loadCourse, sampleCourse } from "../src/courses";
 import { TestGame } from "./harness";
 
 const SOURCES = ["01-warm-up", "02-dogleg", "03-island-hop"];
@@ -17,10 +17,10 @@ describe("the sample Course", () => {
     expect(sampleCourse).toEqual(converted);
   });
 
-  it("has 3 Holes with Cups of the default radius and is the default Course", () => {
+  it("has 3 Holes with Cups of the default radius", () => {
     expect(sampleCourse.holes.map((h) => h.name)).toEqual(["Warm-Up", "Dogleg", "Island Hop"]);
     expect(sampleCourse.holes.every((h) => h.cup.radius === 12)).toBe(true);
-    expect(defaultCourse).toBe(sampleCourse);
+    expect(Object.keys(courses)).toContain("sample");
   });
 
   it("plays a full round: a hole-in-one on the Warm-Up, then two Holes run out the clock", () => {

@@ -28,6 +28,7 @@
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces",
     "convert-course": "npm run convert-course -w @troll-golf/tools --",
-    "convert-sample-course": "npm run convert-course -- --id sample --name \"Sample Course\" --out server/src/courses/sample.json server/src/courses/sample/01-warm-up.tmj server/src/courses/sample/02-dogleg.tmj server/src/courses/sample/03-island-hop.tmj"
+    "convert-sample-course": "npm run convert-course -- --id sample --name \"Sample Course\" --out server/src/courses/sample.json server/src/courses/sample/01-warm-up.tmj server/src/courses/sample/02-dogleg.tmj server/src/courses/sample/03-island-hop.tmj",
+    "convert-v1-course": "npm run convert-course -- --id v1 --name \"Troll Golf v1\" --out server/src/courses/v1.json server/src/courses/v1/01-opener.tmj server/src/courses/v1/02-dogleg.tmj server/src/courses/v1/03-sand-traps.tmj server/src/courses/v1/04-lagoon.tmj server/src/courses/v1/05-ice-rink.tmj server/src/courses/v1/06-boost-lane.tmj server/src/courses/v1/07-windmill-works.tmj server/src/courses/v1/08-warp-zone.tmj server/src/courses/v1/09-chaos-finale.tmj"
   }
 }

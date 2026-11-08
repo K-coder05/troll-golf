@@ -51,6 +51,7 @@ function lane(boxSlots: number[], o: LaneOptions): CourseData {
 
 const TUNING: ItemTuning = {
   ...ITEM_TUNING,
+  boxCountScale: 1,
   odds: {
     first: { self: 100, attack: 0, chaos: 0 },
     middle: { self: 100, attack: 0, chaos: 0 },

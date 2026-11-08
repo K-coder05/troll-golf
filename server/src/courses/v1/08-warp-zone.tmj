@@ -1,0 +1,218 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 40,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Warp Zone"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 624,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 5,
+     "class": "Wall",
+     "x": 440,
+     "y": 16,
+     "width": 30,
+     "height": 200
+    },
+    {
+     "id": 6,
+     "class": "Wall",
+     "x": 440,
+     "y": 424,
+     "width": 30,
+     "height": 200
+    },
+    {
+     "id": 8,
+     "class": "Wall",
+     "x": 760,
+     "y": 16,
+     "width": 16,
+     "height": 230
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 9,
+     "class": "Rough",
+     "x": 776,
+     "y": 16,
+     "width": 168,
+     "height": 230
+    },
+    {
+     "id": 10,
+     "class": "Rough",
+     "x": 600,
+     "y": 400,
+     "width": 160,
+     "height": 200
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 11,
+     "class": "Teleporter",
+     "x": 200,
+     "y": 100,
+     "point": true,
+     "properties": [
+      {
+       "name": "pair",
+       "type": "string",
+       "value": "A"
+      }
+     ]
+    },
+    {
+     "id": 12,
+     "class": "Teleporter",
+     "x": 640,
+     "y": 560,
+     "point": true,
+     "properties": [
+      {
+       "name": "pair",
+       "type": "string",
+       "value": "A"
+      }
+     ]
+    },
+    {
+     "id": 13,
+     "class": "Tee",
+     "x": 110,
+     "y": 500,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "Cup",
+     "x": 860,
+     "y": 130,
+     "point": true
+    },
+    {
+     "id": 15,
+     "class": "ItemBox",
+     "x": 200,
+     "y": 560,
+     "point": true
+    },
+    {
+     "id": 16,
+     "class": "ItemBox",
+     "x": 330,
+     "y": 170,
+     "point": true
+    },
+    {
+     "id": 17,
+     "class": "ItemBox",
+     "x": 620,
+     "y": 150,
+     "point": true
+    },
+    {
+     "id": 18,
+     "class": "ItemBox",
+     "x": 870,
+     "y": 540,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": [
+    {
+     "id": 7,
+     "class": "SlidingWall",
+     "x": 445,
+     "y": 216,
+     "width": 20,
+     "height": 100,
+     "properties": [
+      {
+       "name": "travelX",
+       "type": "float",
+       "value": 0
+      },
+      {
+       "name": "travelY",
+       "type": "float",
+       "value": 108
+      },
+      {
+       "name": "period",
+       "type": "float",
+       "value": 5
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

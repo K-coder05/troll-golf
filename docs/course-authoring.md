@@ -80,3 +80,5 @@ npm run convert-sample-course   # rewrites server/src/courses/sample.json
 ```
 
 A test checks that `sample.json` matches its `.tmj` sources, so re-run this after editing them.
+
+The shipped default is the 9-Hole **Troll Golf v1** Course (`server/src/courses/v1/*.tmj`, converted by `npm run convert-v1-course` into `v1.json`; a test checks they match). `server/test/courseSolver.ts` is a shot-search helper that `v1Course.test.ts` uses to check Holes can be finished and to tune Pars.

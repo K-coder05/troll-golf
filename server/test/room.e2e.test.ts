@@ -97,7 +97,7 @@ describe("GolfRoom over the network", () => {
     // Everyone waits in the lobby; the room creator runs it. Rooms play the sample Course by default.
     expect(stateOf(ben).phase).toBe("lobby");
     expect(stateOf(jay).creatorId).toBe(maya.sessionId);
-    expect(stateOf(ben).courseId).toBe("sample");
+    expect(stateOf(ben).courseId).toBe("v1");
     // An everyone-audience event from the simulation reached Maya's connection.
     await waitFor(() => mayaFeed.includes("Ben joined") && mayaFeed.includes("Jay joined"));
     // The Courses she can pick were sent when she joined.
@@ -109,7 +109,7 @@ describe("GolfRoom over the network", () => {
     ben.send("start", {});
     await new Promise((r) => setTimeout(r, 200));
     expect(stateOf(jay).phase).toBe("lobby");
-    expect(stateOf(jay).courseId).toBe("sample");
+    expect(stateOf(jay).courseId).toBe("v1");
 
     // Maya picks the Course and starts: everyone goes to the 3-2-1, then plays.
     maya.send("configure", { courseId: "placeholder" });

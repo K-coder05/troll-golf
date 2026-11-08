@@ -1,0 +1,289 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 40,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Chaos Finale"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 5
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 624,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 10,
+     "class": "Wall",
+     "x": 16,
+     "y": 420,
+     "width": 820,
+     "height": 20
+    },
+    {
+     "id": 11,
+     "class": "Wall",
+     "x": 110,
+     "y": 200,
+     "width": 834,
+     "height": 20
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 5,
+     "class": "Ice",
+     "x": 16,
+     "y": 440,
+     "width": 560,
+     "height": 184
+    },
+    {
+     "id": 6,
+     "class": "Sand",
+     "x": 600,
+     "y": 240,
+     "width": 140,
+     "height": 160
+    },
+    {
+     "id": 7,
+     "class": "Void",
+     "x": 330,
+     "y": 16,
+     "width": 140,
+     "height": 90
+    },
+    {
+     "id": 8,
+     "class": "Water",
+     "x": 560,
+     "y": 110,
+     "width": 110,
+     "height": 90
+    },
+    {
+     "id": 9,
+     "class": "BoostPad",
+     "x": 850,
+     "y": 480,
+     "width": 80,
+     "height": 100,
+     "properties": [
+      {
+       "name": "direction",
+       "type": "float",
+       "value": -90
+      },
+      {
+       "name": "strength",
+       "type": "float",
+       "value": 1.5
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 14,
+     "class": "Teleporter",
+     "x": 890,
+     "y": 300,
+     "point": true,
+     "properties": [
+      {
+       "name": "pair",
+       "type": "string",
+       "value": "A"
+      }
+     ]
+    },
+    {
+     "id": 15,
+     "class": "Teleporter",
+     "x": 490,
+     "y": 160,
+     "point": true,
+     "properties": [
+      {
+       "name": "pair",
+       "type": "string",
+       "value": "A"
+      }
+     ]
+    },
+    {
+     "id": 16,
+     "class": "Tee",
+     "x": 90,
+     "y": 540,
+     "point": true
+    },
+    {
+     "id": 17,
+     "class": "Cup",
+     "x": 870,
+     "y": 100,
+     "point": true
+    },
+    {
+     "id": 18,
+     "class": "ItemBox",
+     "x": 300,
+     "y": 590,
+     "point": true
+    },
+    {
+     "id": 19,
+     "class": "ItemBox",
+     "x": 600,
+     "y": 470,
+     "point": true
+    },
+    {
+     "id": 20,
+     "class": "ItemBox",
+     "x": 250,
+     "y": 240,
+     "point": true
+    },
+    {
+     "id": 21,
+     "class": "ItemBox",
+     "x": 700,
+     "y": 270,
+     "point": true
+    },
+    {
+     "id": 22,
+     "class": "ItemBox",
+     "x": 200,
+     "y": 60,
+     "point": true
+    },
+    {
+     "id": 23,
+     "class": "ItemBox",
+     "x": 420,
+     "y": 180,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": [
+    {
+     "id": 12,
+     "class": "Windmill",
+     "x": 400,
+     "y": 320,
+     "point": true,
+     "properties": [
+      {
+       "name": "length",
+       "type": "float",
+       "value": 160
+      },
+      {
+       "name": "thickness",
+       "type": "float",
+       "value": 12
+      },
+      {
+       "name": "speed",
+       "type": "float",
+       "value": 80
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 0
+      }
+     ]
+    },
+    {
+     "id": 13,
+     "class": "SlidingWall",
+     "x": 740,
+     "y": 16,
+     "width": 16,
+     "height": 120,
+     "properties": [
+      {
+       "name": "travelX",
+       "type": "float",
+       "value": 0
+      },
+      {
+       "name": "travelY",
+       "type": "float",
+       "value": 64
+      },
+      {
+       "name": "period",
+       "type": "float",
+       "value": 3
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

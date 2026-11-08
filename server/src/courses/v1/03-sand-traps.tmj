@@ -1,0 +1,174 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 35,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Sand Traps"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 544,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 560
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 560
+    },
+    {
+     "id": 5,
+     "class": "Wall",
+     "x": 440,
+     "y": 200,
+     "width": 80,
+     "height": 160
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 6,
+     "class": "Sand",
+     "x": 300,
+     "y": 90,
+     "width": 110,
+     "height": 150
+    },
+    {
+     "id": 7,
+     "class": "Sand",
+     "x": 560,
+     "y": 320,
+     "width": 110,
+     "height": 150
+    },
+    {
+     "id": 8,
+     "class": "Sand",
+     "x": 700,
+     "y": 90,
+     "width": 110,
+     "height": 100
+    },
+    {
+     "id": 9,
+     "class": "Sand",
+     "x": 150,
+     "y": 380,
+     "width": 100,
+     "height": 100
+    },
+    {
+     "id": 10,
+     "class": "Rough",
+     "x": 780,
+     "y": 200,
+     "width": 164,
+     "height": 160
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 11,
+     "class": "Tee",
+     "x": 100,
+     "y": 280,
+     "point": true
+    },
+    {
+     "id": 12,
+     "class": "Cup",
+     "x": 860,
+     "y": 280,
+     "point": true
+    },
+    {
+     "id": 13,
+     "class": "ItemBox",
+     "x": 480,
+     "y": 80,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "ItemBox",
+     "x": 480,
+     "y": 480,
+     "point": true
+    },
+    {
+     "id": 15,
+     "class": "ItemBox",
+     "x": 310,
+     "y": 440,
+     "point": true
+    },
+    {
+     "id": 16,
+     "class": "ItemBox",
+     "x": 650,
+     "y": 100,
+     "point": true
+    },
+    {
+     "id": 17,
+     "class": "ItemBox",
+     "x": 840,
+     "y": 470,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": []
+  }
+ ]
+}

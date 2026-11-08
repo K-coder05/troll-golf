@@ -1,0 +1,190 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 35,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Ice Rink"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 544,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 560
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 560
+    },
+    {
+     "id": 7,
+     "class": "Wall",
+     "x": 400,
+     "y": 110,
+     "width": 40,
+     "height": 100
+    },
+    {
+     "id": 8,
+     "class": "Wall",
+     "x": 400,
+     "y": 350,
+     "width": 40,
+     "height": 100
+    },
+    {
+     "id": 9,
+     "class": "Wall",
+     "x": 560,
+     "y": 230,
+     "width": 40,
+     "height": 100
+    },
+    {
+     "id": 10,
+     "class": "Wall",
+     "x": 730,
+     "y": 16,
+     "width": 16,
+     "height": 170
+    },
+    {
+     "id": 11,
+     "class": "Wall",
+     "x": 730,
+     "y": 374,
+     "width": 16,
+     "height": 170
+    },
+    {
+     "id": 12,
+     "class": "Wall",
+     "x": 250,
+     "y": 220,
+     "width": 30,
+     "height": 120
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 5,
+     "class": "Ice",
+     "x": 16,
+     "y": 16,
+     "width": 928,
+     "height": 528
+    },
+    {
+     "id": 6,
+     "class": "Rough",
+     "x": 760,
+     "y": 200,
+     "width": 184,
+     "height": 160
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 13,
+     "class": "Tee",
+     "x": 100,
+     "y": 280,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "Cup",
+     "x": 860,
+     "y": 280,
+     "point": true
+    },
+    {
+     "id": 15,
+     "class": "ItemBox",
+     "x": 300,
+     "y": 90,
+     "point": true
+    },
+    {
+     "id": 16,
+     "class": "ItemBox",
+     "x": 300,
+     "y": 470,
+     "point": true
+    },
+    {
+     "id": 17,
+     "class": "ItemBox",
+     "x": 480,
+     "y": 200,
+     "point": true
+    },
+    {
+     "id": 18,
+     "class": "ItemBox",
+     "x": 660,
+     "y": 100,
+     "point": true
+    },
+    {
+     "id": 19,
+     "class": "ItemBox",
+     "x": 660,
+     "y": 470,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": []
+  }
+ ]
+}

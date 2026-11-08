@@ -220,7 +220,7 @@ export const ITEM_TUNING: ItemTuning = {
   },
   boxRespawnMs: 10_000,
   boxRadius: 14,
-  boxCountScale: 1,
+  boxCountScale: 0.7,
   rouletteMs: 1500,
 };
 
@@ -265,9 +265,9 @@ export function scaleOdds(odds: OddsTable, level: ChaosLevelId): OddsTable {
 
 /**
  * The tuning in force at a chaos level: scaled odds and box count. The box
- * count is a fraction of the Hole's spawn points, so it cannot go above 1:
- * Unhinged fills every spawn point, as Normal already does at the default
- * boxCountScale of 1.
+ * count is a fraction of the Hole's spawn points, so it cannot go above 1.
+ * With the base boxCountScale of 0.7, Normal fills about 70% of the spawn
+ * points, Unhinged all of them and Chill about 42%.
  */
 export function tuningForChaos(tuning: ItemTuning, level: ChaosLevelId): ItemTuning {
   return {
