@@ -116,7 +116,7 @@ export const ITEM_CATALOGUE: ItemCatalogue = {
     disabling: false,
     counters: [],
     weight: 2,
-    params: { minCupRadii: 3 },
+    params: { minCupRadii: 3, trapRadius: 14, pushSpeed: 600 },
   },
   shield: {
     id: "shield",

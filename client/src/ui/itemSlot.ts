@@ -9,6 +9,7 @@ import {
   type TimeMessage,
   type UseItemMessage,
 } from "@troll-golf/shared";
+import { placement } from "../items/bananaMine";
 import { crosshair } from "../items/golfGun";
 import { startTargetPicker } from "./targetPicker";
 
@@ -23,6 +24,7 @@ const DENIED: Record<string, string> = {
   spectating: "Wait for the next Hole",
   no_target: "Nobody can be targeted right now",
   untargetable: "Can't hit them right now",
+  bad_placement: "Too close to the Cup",
   unknown_target: "Can't hit them",
 };
 
@@ -64,6 +66,10 @@ export function startItemSlot(room: Room): void {
 
   room.onMessage("item", (message: ItemSlotMessage) => {
     item = message.item;
+    if (placement.armed) {
+      placement.armed = false;
+      document.body.classList.remove("crosshair");
+    }
     note.textContent = "";
     setActive(message.item && message.active ? message.active : null);
     if (!item) picker.close();
@@ -120,6 +126,13 @@ export function startItemSlot(room: Room): void {
 
   const use = () => {
     if (!item || spinUntil || active) return; // armed: clicks on the Hole are the shots
+    // A Banana Mine from a Holed-Out Player: click the Hole to place it (use again to cancel).
+    const me = (room.state as { players?: { get(id: string): { holedOut: boolean } | undefined } }).players?.get(room.sessionId);
+    if (ITEM_CATALOGUE[item].targeting === "placed" && me?.holedOut) {
+      placement.armed = !placement.armed;
+      document.body.classList.toggle("crosshair", placement.armed);
+      return;
+    }
     room.send("useItem", {} satisfies UseItemMessage);
   };
   slot.addEventListener("click", use);

@@ -196,6 +196,7 @@ export function createGame(options: CreateGameOptions): Game {
     players: {},
     terrainEdits: [],
     itemBoxes: [],
+    traps: [],
   };
   let events: GameEvent[] = [];
   let joinCount = 0;
@@ -309,6 +310,7 @@ export function createGame(options: CreateGameOptions): Game {
         snipers.set(playerId, { name: byName, until: clock.now() + SNIPE_CREDIT_MS });
       },
       cupPosition: () => ({ x: state.cup.x, y: state.cup.y }),
+      holeSize: () => ({ width: currentHole().width, height: currentHole().height }),
       placeAtRest(playerId, at) {
         const player = state.players[playerId]!;
         // The Admin loses their grip on it.
@@ -886,6 +888,7 @@ export function createGame(options: CreateGameOptions): Game {
     const cap = par + state.settings.strokeCapOverPar;
     dropHeld();
     cancelNuke();
+    items.clearTraps();
     // Effects don't outlive their Hole (a Freeze thaws, a Shield pops quietly).
     effects.clearAll();
     for (const player of Object.values(state.players)) {
@@ -1344,6 +1347,8 @@ export function createGame(options: CreateGameOptions): Game {
 
       // Item Boxes are sensors: passing through one never changes the ball's path.
       items.rollThrough(player, startedAt.get(id) ?? motion, motion);
+      // Banana Mines are sensors too: touching one spins the ball off (via the Item Hit path for opponents).
+      items.triggerTraps(player, startedAt.get(id) ?? motion, motion);
       // A pinned (Frozen) ball is a block of ice: it can't drop into the Cup or ride pads and Teleporters.
       const pinned = physics.isPinned(id);
       if (!ball.atRest && !pinned && checkCup(player)) continue;
@@ -1422,6 +1427,7 @@ export function createGame(options: CreateGameOptions): Game {
       if (state.phase === "playing") {
         expireTerrain();
         items.respawnBoxes();
+        items.expireTraps();
         effects.expire();
       }
       items.expireActive();

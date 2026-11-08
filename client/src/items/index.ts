@@ -1,5 +1,6 @@
 import type { FxMessage, ItemId } from "@troll-golf/shared";
 import type * as Phaser from "phaser";
+import { bananaMineRenderer } from "./bananaMine";
 import { freezeRayRenderer } from "./freezeRay";
 import { golfGunRenderer } from "./golfGun";
 import { inkSplatRenderer } from "./inkSplat";
@@ -19,6 +20,7 @@ export interface ItemRenderer {
 
 /** Every Item's client renderer, by Item id. Items without one show nothing extra. */
 export const ITEM_RENDERERS: { readonly [K in ItemId]?: ItemRenderer } = {
+  bananaMine: bananaMineRenderer,
   freezeRay: freezeRayRenderer,
   golfGun: golfGunRenderer,
   inkSplat: inkSplatRenderer,

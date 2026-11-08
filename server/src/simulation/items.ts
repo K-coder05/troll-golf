@@ -70,6 +70,8 @@ export interface ItemBallControl {
    * sniped it there.
    */
   push(playerId: string, delta: Vec2, byName: string): void;
+  /** The Hole's width and height (a placed trap must lie inside it). */
+  holeSize(): { width: number; height: number };
   /** Where the Cup is now (a Holed-Out Golf Gun shooter fires from it). */
   cupPosition(): Vec2;
 }
@@ -131,6 +133,8 @@ export interface ItemContext {
   hit(targetId: string, land: () => void): ItemHitResult;
   /** Opponents this Item may target right now, best Standing first (Swap picks from these). */
   targets(): PlayerState[];
+  /** Lay a Banana Mine at `at` for the user; it lasts `def.durationMs`. */
+  placeTrap(at: Vec2): void;
 }
 
 export type ItemUseOutcome =
@@ -302,6 +306,19 @@ export interface ItemSystem {
   setupHole(hole: HoleData): void;
   /** Shattered boxes whose time is up come back. Call while playing. */
   respawnBoxes(): void;
+  /** Untriggered Banana Mines past their time disappear. Call while playing. */
+  expireTraps(): void;
+  /** Every trap goes (a Hole ends or starts). */
+  clearTraps(): void;
+  /**
+   * A ball in play moved from `from` to `to` this physics step: it sets off
+   * the first armed trap its path touched (owner's ball included). The
+   * trap is consumed whatever happens; the push is random-direction via the
+   * Rng. An opponent's trigger goes through applyItemHit (Shield, immunity,
+   * Item Hit, feed); a ball that was already on the trap when it was laid is
+   * exempt until it has left it.
+   */
+  triggerTraps(player: PlayerState, from: Vec2, to: Vec2): void;
   /** Items in use whose time is up (or whose Hole is over) are used up. Call every step. */
   expireActive(): void;
   /**
@@ -353,6 +370,10 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
   // Item Hits per attacker this game. Server-only until the game ends (then copied into PlayerState.itemHits).
   const hits = new Map<string, number>();
   const { effects } = options;
+  // Banana Mines with their owners (public state has no owner). `exempt`: balls that were
+  // already touching it when it was laid, until they roll clear.
+  const trapOwners = new Map<number, { ownerId: string; exempt: Set<string> }>();
+  let nextTrapId = 0;
 
   const available = (id: ItemId) => handlers[id] !== undefined;
 
@@ -458,6 +479,47 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     return { result: "landed" };
   }
 
+  const trapDef = catalogue.bananaMine;
+  const trapReach = (trapDef.params.trapRadius ?? 14) + BALL_RADIUS;
+
+  function removeTrap(id: number): void {
+    state.traps = state.traps.filter((t) => t.id !== id);
+    trapOwners.delete(id);
+  }
+
+  function placeTrap(ownerId: string, at: Vec2): void {
+    const id = nextTrapId++;
+    const exempt = new Set<string>();
+    for (const p of Object.values(state.players)) {
+      if (!p.holedOut && !p.spectating && Math.hypot(p.ball.x - at.x, p.ball.y - at.y) <= trapReach) exempt.add(p.id);
+    }
+    state.traps.push({ id, x: at.x, y: at.y, expiresAt: clock.now() + trapDef.durationMs });
+    trapOwners.set(id, { ownerId, exempt });
+  }
+
+  function setOff(trap: RoomState["traps"][number], victim: PlayerState): void {
+    const owner = trapOwners.get(trap.id)!.ownerId;
+    removeTrap(trap.id);
+    const ownerName = state.players[owner]?.name ?? "Someone";
+    // One roll of the Rng per trigger, whether or not the push lands.
+    const angle = rng.next() * Math.PI * 2;
+    const speed = trapDef.params.pushSpeed ?? 600;
+    const spin = () => {
+      emit({ type: "fx", payload: { kind: "itemUse", item: "bananaMine", x: trap.x, y: trap.y, targetId: victim.id }, audience: everyone });
+      options.balls.push(victim.id, { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed }, ownerName);
+    };
+    if (victim.id === owner) {
+      spin();
+      emit({ type: "feed", payload: { text: `${victim.name} slipped on their own banana` }, audience: everyone });
+      return;
+    }
+    // Shield and immunity apply: a blocked or immune trigger still uses the trap up (no push).
+    applyItemHit(owner, victim.id, "bananaMine", () => {
+      spin();
+      emit({ type: "feed", payload: { text: `${victim.name} slipped on ${ownerName}'s banana` }, audience: everyone });
+    });
+  }
+
   return {
     get log() {
       return log;
@@ -465,7 +527,32 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     applyItemHit,
     canTarget,
     itemHits: (playerId) => hits.get(playerId) ?? 0,
+    expireTraps() {
+      const now = clock.now();
+      for (const trap of [...state.traps]) if (now >= trap.expiresAt) removeTrap(trap.id);
+    },
+    clearTraps() {
+      state.traps = [];
+      trapOwners.clear();
+    },
+    triggerTraps(player, from, to) {
+      if (player.holedOut || player.spectating || !player.connected) return;
+      for (const trap of [...state.traps]) {
+        const info = trapOwners.get(trap.id);
+        if (!info) continue;
+        const near = segmentDistance(trap, from, to) <= trapReach;
+        if (info.exempt.has(player.id)) {
+          if (!near) info.exempt.delete(player.id);
+          continue;
+        }
+        if (!near) continue;
+        setOff(trap, player);
+        return;
+      }
+    },
     setupHole(hole) {
+      state.traps = [];
+      trapOwners.clear();
       const points = state.settings.itemsEnabled ? chooseBoxSpawns(hole.itemBoxes, tuning.boxCountScale, rng) : [];
       state.itemBoxes = points.map((p, id) => ({ id, x: p.x, y: p.y, active: true, respawnAt: 0 }));
     },
@@ -534,6 +621,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
         effects,
         hit: (targetId, land) => applyItemHit(playerId, targetId, def.id, land),
         targets: () => targetsFor(playerId, def.id),
+        placeTrap: (at) => placeTrap(playerId, at),
       });
       if (!outcome.ok) return deny(playerId, slot.item, outcome.reason);
       if (!outcome.keep) slots.delete(playerId);

@@ -107,6 +107,18 @@ export const ItemBoxSchema = schema(
 );
 export type ItemBoxSchema = SchemaType<typeof ItemBoxSchema>;
 
+/** One Banana Mine (see TrapState in @troll-golf/shared). Never says whose it is. */
+export const TrapSchema = schema(
+  {
+    id: t.number(),
+    x: t.number(),
+    y: t.number(),
+    expiresAt: t.number(),
+  },
+  "Trap",
+);
+export type TrapSchema = SchemaType<typeof TrapSchema>;
+
 export const RoomStateSchema = schema(
   {
     code: t.string(),
@@ -124,6 +136,7 @@ export const RoomStateSchema = schema(
     players: t.map(PlayerSchema),
     terrainEdits: t.array(TerrainEditSchema),
     itemBoxes: t.array(ItemBoxSchema),
+    traps: t.array(TrapSchema),
   },
   "RoomState",
 );

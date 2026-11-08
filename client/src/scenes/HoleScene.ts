@@ -16,12 +16,14 @@ import {
   NUKE_SIREN_MS,
   ITEM_TUNING,
   type ItemBoxState,
+  type TrapState,
   EFFECT_INFO,
   type EffectKind,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 import { startSiren } from "../fx/siren";
 import { ITEM_RENDERERS } from "../items";
+import { placement } from "../items/bananaMine";
 import { crosshair } from "../items/golfGun";
 import { SnapshotBuffer, type Point } from "../net/interpolation";
 import type { AdminHit, AdminView } from "../adminHost";
@@ -51,6 +53,7 @@ interface SyncedState {
   phase: Phase;
   terrainEdits?: Iterable<SyncedTerrainEdit>;
   itemBoxes?: Iterable<ItemBoxState>;
+  traps?: Iterable<TrapState>;
   leaderId: string;
   holeIndex: number;
   cup: CupState;
@@ -151,6 +154,7 @@ export class HoleScene extends Phaser.Scene {
   private balls = new Map<string, BallSprite>();
   /** One floating "?" per Item Box, by box id. */
   private boxes = new Map<number, Phaser.GameObjects.Container>();
+  private traps = new Map<number, Phaser.GameObjects.Text>();
   private tab!: Phaser.Input.Keyboard.Key;
   private escape!: Phaser.Input.Keyboard.Key;
 
@@ -215,6 +219,14 @@ export class HoleScene extends Phaser.Scene {
         this.room.send("useItem", { point: { x: world.x, y: world.y } } satisfies UseItemMessage);
         return;
       }
+      // Holed out with a Banana Mine: this click is where it goes.
+      if (placement.armed) {
+        const world = this.worldPoint(pointer);
+        placement.armed = false;
+        document.body.classList.remove("crosshair");
+        this.room.send("useItem", { point: { x: world.x, y: world.y } } satisfies UseItemMessage);
+        return;
+      }
       // Frozen: every click is a mash to break out sooner.
       if (this.amFrozen()) {
         this.room.send("mash", {});
@@ -252,6 +264,7 @@ export class HoleScene extends Phaser.Scene {
     this.renderCup();
     this.renderObstacles();
     this.renderItemBoxes();
+    this.renderTraps();
     this.renderBalls();
     // A shot can only start from a ball at rest during play; drop the aim otherwise.
     if (this.aimPoint && !this.canShoot()) this.aimPoint = null;
@@ -571,6 +584,26 @@ export class HoleScene extends Phaser.Scene {
       if (seen.has(id)) continue;
       sprite.destroy();
       this.boxes.delete(id);
+    }
+  }
+
+  /** Banana Mines from synced state: a banana lying on the Hole, wobbling. Visible to everyone. */
+  private renderTraps(): void {
+    const seen = new Set<number>();
+    const t = performance.now() / 1000;
+    for (const trap of this.syncedState()?.traps ?? []) {
+      seen.add(trap.id);
+      let sprite = this.traps.get(trap.id);
+      if (!sprite) {
+        sprite = this.add.text(trap.x, trap.y, "\u{1F34C}", { fontSize: "22px" }).setOrigin(0.5).setDepth(3);
+        this.traps.set(trap.id, sprite);
+      }
+      sprite.setAngle(Math.sin(t * 4 + trap.id) * 12);
+    }
+    for (const [id, sprite] of this.traps) {
+      if (seen.has(id)) continue;
+      sprite.destroy();
+      this.traps.delete(id);
     }
   }
 

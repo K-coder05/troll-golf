@@ -86,6 +86,18 @@ export interface PlayerState {
 }
 
 /**
+ * A Banana Mine on the Hole. Public (everyone sees traps); says nothing about
+ * who dropped it. Gone when triggered, at `expiresAt`, or when the Hole ends.
+ */
+export interface TrapState {
+  id: number;
+  x: number;
+  y: number;
+  /** Clock time (ms) it disappears if nobody sets it off. */
+  expiresAt: number;
+}
+
+/**
  * An Item Box floating at one of the Hole's spawn points. A sensor: balls
  * roll straight through it. Shattered (inactive) after a pickup until
  * `respawnAt`. Says nothing about who took it or what they got.
@@ -155,4 +167,6 @@ export interface RoomState {
    * holder (see items.ts).
    */
   itemBoxes: ItemBoxState[];
+  /** Banana Mines lying on the current Hole, public to everyone. */
+  traps: TrapState[];
 }

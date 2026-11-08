@@ -1,4 +1,5 @@
 import type { ItemHandlerRegistry } from "../items";
+import { bananaMine } from "./bananaMine";
 import { freezeRay } from "./freezeRay";
 import { golfGun } from "./golfGun";
 import { inkSplat } from "./inkSplat";
@@ -14,6 +15,7 @@ import { shield } from "./shield";
  * their lasting effects are Effects (../effects.ts, ../effectKinds/).
  */
 export const ITEM_HANDLERS: ItemHandlerRegistry = {
+  bananaMine,
   freezeRay,
   golfGun,
   inkSplat,

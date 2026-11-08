@@ -1,5 +1,5 @@
 import type { RoomState } from "@troll-golf/shared";
-import { EffectSchema, ItemBoxSchema, PlayerSchema, PointSchema, TerrainEditSchema, type RoomStateSchema } from "./schema";
+import { EffectSchema, ItemBoxSchema, PlayerSchema, PointSchema, TerrainEditSchema, TrapSchema, type RoomStateSchema } from "./schema";
 
 /**
  * Copies the simulation's public state into the synced schema. Colyseus only
@@ -57,6 +57,22 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
 
   syncTerrain(target.terrainEdits, source.terrainEdits);
   syncItemBoxes(target.itemBoxes, source.itemBoxes);
+  syncTraps(target.traps, source.traps);
+}
+
+/** Traps come and go by id; rebuild from the first id that differs. */
+function syncTraps(target: RoomStateSchema["traps"], source: Readonly<RoomState>["traps"]): void {
+  let same = 0;
+  while (same < target.length && same < source.length && target[same]!.id === source[same]!.id) same++;
+  while (target.length > same) target.pop();
+  source.slice(same).forEach((trap) => {
+    const synced = new TrapSchema();
+    synced.id = trap.id;
+    synced.x = trap.x;
+    synced.y = trap.y;
+    synced.expiresAt = trap.expiresAt;
+    target.push(synced);
+  });
 }
 
 /** A Player's visible Effects: few and short-lived, so rebuild from the first id that differs. */
