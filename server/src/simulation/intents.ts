@@ -7,7 +7,16 @@
  */
 export type Intent =
   | { type: "join"; name: string; color: string }
+  /**
+   * The Player is gone for good (a consented leave, or their reconnection
+   * window ran out). In the lobby they are removed; mid-game their ball and
+   * scores stay, disconnected, and they can't come back as the same Player.
+   */
   | { type: "leave" }
+  /** The connection dropped; the Player may still reconnect as themselves. */
+  | { type: "disconnect" }
+  /** A dropped Player is back with their same ball, Strokes and held Item. */
+  | { type: "reconnect" }
   /** Start the game from the lobby. Only the room creator (state.creatorId) may. */
   | { type: "start" }
   /** Change lobby settings (room creator only, lobby only). Ticket 24 adds chaosLevel. */
@@ -29,6 +38,14 @@ export type IntentRejection =
   /** Only the room creator may change lobby settings or start the game. */
   | "not_creator"
   /** No such Course in this room's catalogue. */
-  | "unknown_course";
+  | "unknown_course"
+  /** The Player is disconnected (a disconnect twice, or a shot from a dropped session). */
+  | "not_connected"
+  /** A reconnect from a Player who never dropped. */
+  | "already_connected"
+  /** A reconnect from a Player who already left the game for good. */
+  | "left_game"
+  /** A late joiner waiting for the next Hole has no ball on the course. */
+  | "spectating";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

@@ -100,6 +100,28 @@ export function unfinishedScore(strokes: number, par: number, strokeCapOverPar: 
   return Math.min(strokes + UNFINISHED_PENALTY, par + strokeCapOverPar);
 }
 
+/**
+ * Whether Items (ticket 15) may target this Player right now. A Player who
+ * has Holed Out, is disconnected, or is a late joiner waiting for the next
+ * Hole has no ball in play and can't be hit. Ticket 15 adds the 3 s immunity
+ * window and the disabling-Effect cap on top of this.
+ */
+export function isTargetable(player: Readonly<PlayerState>): boolean {
+  return player.connected && !player.holedOut && !player.spectating;
+}
+
+/**
+ * Whether a Player's ball is a body in the physics world: on the course, its
+ * Player connected and actually playing this Hole. Every other ball stays
+ * frozen where its state says, with no collisions at all.
+ */
+function hasBallInPlay(player: Readonly<PlayerState>): boolean {
+  return player.connected && !player.holedOut && !player.spectating;
+}
+
+/** Standing distance for a late joiner who has no ball on the course: behind everyone. */
+const NOT_ON_COURSE_DISTANCE = 1e9;
+
 export function createGame(options: CreateGameOptions): Game {
   // options.rng is not used yet; every later roll must come from it so tests stay deterministic.
   const { clock } = options;
@@ -149,6 +171,12 @@ export function createGame(options: CreateGameOptions): Game {
   const lippedOut = new Set<string>();
   // Balls in the Cup's no-collision zone, where other balls pass through them.
   const cupGuarded = new Set<string>();
+  // Players who left mid-game for good. They stay in state (their scores
+  // count) but can't reconnect and don't take up a seat.
+  const gone = new Set<string>();
+  // Players connected at some point while the current Hole was set up or
+  // played. Anyone else missed the whole Hole and is scored at its stroke cap.
+  const presentThisHole = new Set<string>();
 
   const emit = (event: GameEvent) => events.push(event);
 
@@ -168,15 +196,47 @@ export function createGame(options: CreateGameOptions): Game {
     return spots.find(free) ?? { ...tee };
   }
 
-  /** Balls currently on the course (not in the Cup). */
-  const ballsInPlay = () =>
+  /** Balls currently on the course (not in the Cup, not a waiting late joiner's), connected or not. */
+  const ballsOnCourse = () =>
     Object.values(state.players)
-      .filter((p) => !p.holedOut)
+      .filter((p) => !p.holedOut && !p.spectating)
       .map((p) => p.ball);
 
   function placeOnTee(player: PlayerState, spot: Vec2): void {
     player.ball = { x: spot.x, y: spot.y, vx: 0, vy: 0, atRest: true, restSpot: { ...spot } };
     player.holedOut = false;
+  }
+
+  /** Put every Player's ball on the Tee of the (new) current Hole; only balls in play get a body. */
+  function placeEveryoneOnTee(): void {
+    const placed: Vec2[] = [];
+    for (const player of Object.values(state.players)) {
+      forgetBall(player.id);
+      player.spectating = false;
+      const spot = teeSpot(placed);
+      placed.push(spot);
+      placeOnTee(player, spot);
+      addBody(player);
+    }
+  }
+
+  /** Give the ball a physics body if it should have one and doesn't, at rest where its state says. */
+  function addBody(player: PlayerState): void {
+    if (!hasBallInPlay(player) || physics.hasBall(player.id)) return;
+    physics.addBall(player.id, player.ball);
+    player.ball.vx = 0;
+    player.ball.vy = 0;
+    player.ball.atRest = true;
+    slowSteps.set(player.id, 0);
+  }
+
+  /** Take the ball out of the physics world: it stays put in state, touching nothing. */
+  function removeBody(player: PlayerState): void {
+    physics.removeBall(player.id);
+    forgetBall(player.id);
+    player.ball.vx = 0;
+    player.ball.vy = 0;
+    player.ball.atRest = true;
   }
 
   function forgetBall(id: string): void {
@@ -196,7 +256,7 @@ export function createGame(options: CreateGameOptions): Game {
   function guardCup(): void {
     const cup = state.cup;
     for (const player of Object.values(state.players)) {
-      if (player.holedOut) continue;
+      if (!physics.hasBall(player.id)) continue;
       const inside = Math.hypot(player.ball.x - cup.x, player.ball.y - cup.y) <= cup.radius + BALL_RADIUS;
       if (inside === cupGuarded.has(player.id)) continue;
       if (inside) cupGuarded.add(player.id);
@@ -218,12 +278,16 @@ export function createGame(options: CreateGameOptions): Game {
       .map((p) => ({
         player: p,
         total: p.strokes.reduce((a, b) => a + b, 0),
-        distance: p.holedOut ? 0 : Math.hypot(p.ball.x - cup.x, p.ball.y - cup.y),
+        distance: p.holedOut
+          ? 0
+          : p.spectating
+            ? NOT_ON_COURSE_DISTANCE
+            : Math.hypot(p.ball.x - cup.x, p.ball.y - cup.y),
         order: joinOrder.get(p.id) ?? 0,
       }))
       .sort((a, b) => a.total - b.total || a.distance - b.distance || a.order - b.order);
     ranked.forEach((r, i) => (r.player.standing = i + 1));
-    state.leaderId = ranked.find((r) => !r.player.holedOut)?.player.id ?? "";
+    state.leaderId = ranked.find((r) => !r.player.holedOut && !r.player.spectating)?.player.id ?? "";
   }
 
   // ---- Hole flow: lobby -> countdown -> playing -> holeEnd -> ... -> gameEnd ----
@@ -231,7 +295,9 @@ export function createGame(options: CreateGameOptions): Game {
   /**
    * Set up Hole `index` and begin its countdown: a fresh physics world, the
    * Cup back to the Hole's own, every ball on the Tee and nobody Holed Out.
-   * Everyone is sent the new layout.
+   * Late joiners waiting for this Hole now play it. A disconnected Player's
+   * ball waits on the Tee, without a body, until they come back. Everyone is
+   * sent the new layout.
    */
   function startHole(index: number): void {
     state.holeIndex = index;
@@ -240,14 +306,9 @@ export function createGame(options: CreateGameOptions): Game {
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
     state.obstacleTimeMs = 0;
-    const placed: Vec2[] = [];
-    for (const player of Object.values(state.players)) {
-      forgetBall(player.id);
-      const spot = teeSpot(placed);
-      placed.push(spot);
-      placeOnTee(player, spot);
-      physics.addBall(player.id, spot);
-    }
+    placeEveryoneOnTee();
+    presentThisHole.clear();
+    for (const player of Object.values(state.players)) if (player.connected) presentThisHole.add(player.id);
     state.phase = "countdown";
     state.phaseEndsAt = clock.now() + COUNTDOWN_MS;
     state.holeEndsAt = 0;
@@ -261,17 +322,27 @@ export function createGame(options: CreateGameOptions): Game {
     state.phaseEndsAt = state.holeEndsAt;
   }
 
-  /** Score anyone unfinished, freeze the balls and show the scoreboard. */
+  /**
+   * Score anyone unfinished, freeze the balls and show the scoreboard.
+   * Unfinished means min(Strokes + 2, stroke cap), disconnected or not. A
+   * Player who was never connected while this Hole was on missed it entirely
+   * and gets the stroke cap, like a late joiner (otherwise sitting out a whole
+   * Hole would score a cheap Strokes + 2 = 2). Late joiners still waiting were
+   * scored when they joined.
+   */
   function endHole(): void {
     const par = currentHole().par;
+    const cap = par + state.settings.strokeCapOverPar;
     for (const player of Object.values(state.players)) {
-      if (player.holedOut) continue;
-      physics.stop(player.id);
+      if (player.holedOut || player.spectating) continue;
+      if (physics.hasBall(player.id)) physics.stop(player.id);
       player.ball.vx = 0;
       player.ball.vy = 0;
       player.ball.atRest = true;
       const strokes = player.strokes[state.holeIndex] ?? 0;
-      player.strokes[state.holeIndex] = unfinishedScore(strokes, par, state.settings.strokeCapOverPar);
+      player.strokes[state.holeIndex] = presentThisHole.has(player.id)
+        ? unfinishedScore(strokes, par, state.settings.strokeCapOverPar)
+        : cap;
     }
     state.phase = "holeEnd";
     state.holeEndsAt = 0;
@@ -294,8 +365,8 @@ export function createGame(options: CreateGameOptions): Game {
         if (now >= state.phaseEndsAt) startPlaying();
         break;
       case "playing": {
-        // Disconnected Players (ticket 08) don't hold the Hole up.
-        const players = Object.values(state.players).filter((p) => p.connected);
+        // Disconnected Players and late joiners waiting for the next Hole don't hold the Hole up.
+        const players = Object.values(state.players).filter((p) => p.connected && !p.spectating);
         const everyoneIn = players.length > 0 && players.every((p) => p.holedOut);
         if (everyoneIn || now >= state.holeEndsAt) endHole();
         break;
@@ -346,34 +417,47 @@ export function createGame(options: CreateGameOptions): Game {
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
     state.obstacleTimeMs = 0;
-    const placed: Vec2[] = [];
-    for (const player of Object.values(state.players)) {
-      forgetBall(player.id);
-      const spot = teeSpot(placed);
-      placed.push(spot);
-      placeOnTee(player, spot);
-      physics.addBall(player.id, spot);
-      player.strokes = course.holes.map(() => 0);
-    }
+    placeEveryoneOnTee();
+    for (const player of Object.values(state.players)) player.strokes = course.holes.map(() => 0);
     emit({ type: "hole", payload: { holeIndex: 0, hole }, audience: everyone });
     emit({ type: "feed", payload: { text: `Course: ${course.name}` }, audience: everyone });
     return { ok: true };
   }
 
+  /** Players who hold a seat: everyone except those who left mid-game for good. */
+  const seatsTaken = () => Object.keys(state.players).filter((id) => !gone.has(id)).length;
+
+  /** The one-shot messages a (re)joining Player needs to draw the room. */
+  function sendRoomTo(playerId: string): void {
+    emit({ type: "time", payload: { now: clock.now() }, audience: toPlayer(playerId) });
+    emit({ type: "courses", payload: { courses: courseList }, audience: toPlayer(playerId) });
+    emit({ type: "hole", payload: { holeIndex: state.holeIndex, hole: currentHole() }, audience: toPlayer(playerId) });
+  }
+
+  /**
+   * A new Player. In the lobby, or during the 3-2-1 before a Hole (nothing
+   * has been played yet), they go straight onto the Tee. Once a Hole is being
+   * played or is over, they're a late joiner: they spectate until the next
+   * Hole starts, and every Hole up to and including the current one is scored
+   * at its stroke cap (Par + strokeCapOverPar) right away, so Standing counts
+   * it. Joining after the last Hole means watching the final results.
+   */
   function join(playerId: string, name: string, color: string): IntentResult {
     if (state.players[playerId]) return { ok: false, reason: "already_joined" };
-    if (Object.keys(state.players).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
+    if (seatsTaken() >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
 
-    // Joining mid-game puts the ball on the current Hole's Tee for now.
-    // Ticket 08 makes late joiners wait for the next Hole, scored at the stroke cap.
-    const spot = teeSpot(ballsInPlay());
+    const late = state.phase === "playing" || state.phase === "holeEnd" || state.phase === "gameEnd";
+    const spot = late ? { ...currentHole().tee } : teeSpot(ballsOnCourse());
+    const cap = state.settings.strokeCapOverPar;
+    const missedThrough = state.phase === "gameEnd" ? course.holes.length - 1 : state.holeIndex;
     const player: PlayerState = {
       id: playerId,
       name: cleanName(name, joinCount),
       color: cleanColor(color, joinCount),
       connected: true,
+      spectating: late,
       ball: { x: spot.x, y: spot.y, vx: 0, vy: 0, atRest: true, restSpot: { ...spot } },
-      strokes: course.holes.map(() => 0),
+      strokes: course.holes.map((h, i) => (late && i <= missedThrough ? h.par + cap : 0)),
       holedOut: false,
       standing: 0,
     };
@@ -382,28 +466,76 @@ export function createGame(options: CreateGameOptions): Game {
     state.players[playerId] = player;
     // The room creator is the first to join.
     if (!state.creatorId) state.creatorId = playerId;
-    physics.addBall(playerId, spot);
+    addBody(player);
+    if (state.phase === "countdown") presentThisHole.add(playerId);
     updateStandings();
-    emit({ type: "time", payload: { now: clock.now() }, audience: toPlayer(playerId) });
-    emit({ type: "courses", payload: { courses: courseList }, audience: toPlayer(playerId) });
-    emit({ type: "hole", payload: { holeIndex: state.holeIndex, hole: currentHole() }, audience: toPlayer(playerId) });
-    emit({ type: "feed", payload: { text: `${player.name} joined` }, audience: everyone });
+    sendRoomTo(playerId);
+    const note = !late ? "" : state.phase === "gameEnd" ? " to watch" : ", playing from the next Hole";
+    emit({ type: "feed", payload: { text: `${player.name} joined${note}` }, audience: everyone });
     return { ok: true };
   }
 
+  /**
+   * The connection dropped. The Player stays, with their ball frozen where it
+   * is: out of the physics world (no collisions, nothing moves it) and not
+   * targetable. Everything else about them is kept for when they come back.
+   */
+  function disconnect(playerId: string): IntentResult {
+    const player = state.players[playerId];
+    if (!player) return { ok: false, reason: "unknown_player" };
+    if (!player.connected) return { ok: false, reason: "not_connected" };
+    player.connected = false;
+    if (physics.hasBall(playerId)) removeBody(player);
+    updateStandings();
+    emit({ type: "feed", payload: { text: `${player.name} disconnected` }, audience: everyone });
+    return { ok: true };
+  }
+
+  /**
+   * The same Player is back: same ball (at rest where it was frozen, or on
+   * the Tee if a new Hole started meanwhile), same Strokes, and every other
+   * per-Player record the simulation keeps, so the held Item (ticket 14)
+   * survives too as long as it lives on the Player.
+   */
+  function reconnect(playerId: string): IntentResult {
+    const player = state.players[playerId];
+    if (!player) return { ok: false, reason: "unknown_player" };
+    if (gone.has(playerId)) return { ok: false, reason: "left_game" };
+    if (player.connected) return { ok: false, reason: "already_connected" };
+    player.connected = true;
+    addBody(player);
+    if (state.phase === "countdown" || state.phase === "playing") presentThisHole.add(playerId);
+    updateStandings();
+    sendRoomTo(playerId);
+    emit({ type: "feed", payload: { text: `${player.name} is back` }, audience: everyone });
+    return { ok: true };
+  }
+
+  /**
+   * Gone for good. In the lobby the Player is removed. Mid-game they stay
+   * disconnected (ball frozen, scores kept, the unfinished-Hole rule at Hole
+   * end) but give up their seat and can't reconnect.
+   */
   function leave(playerId: string): IntentResult {
     const player = state.players[playerId];
     if (!player) return { ok: false, reason: "unknown_player" };
-    // Lobby-only behaviour for now. Ticket 08 keeps the ball on the course
-    // (connected = false) when someone drops mid-game.
-    delete state.players[playerId];
-    joinOrder.delete(playerId);
-    physics.removeBall(playerId);
-    forgetBall(playerId);
+    if (gone.has(playerId)) return { ok: false, reason: "left_game" };
+    if (state.phase === "lobby") {
+      delete state.players[playerId];
+      joinOrder.delete(playerId);
+      physics.removeBall(playerId);
+      forgetBall(playerId);
+    } else {
+      player.connected = false;
+      if (physics.hasBall(playerId)) removeBody(player);
+      gone.add(playerId);
+    }
     emit({ type: "feed", payload: { text: `${player.name} left` }, audience: everyone });
     if (state.creatorId === playerId) {
-      // The longest-present Player takes over running the lobby.
-      const next = Object.keys(state.players).sort((a, b) => joinOrder.get(a)! - joinOrder.get(b)!)[0];
+      // The longest-present Player still in the game takes over running the lobby.
+      const next = Object.keys(state.players)
+        .filter((id) => id !== playerId && !gone.has(id))
+        .sort((a, b) => joinOrder.get(a)! - joinOrder.get(b)!)[0];
       state.creatorId = next ?? "";
       if (next) emit({ type: "feed", payload: { text: `${state.players[next]!.name} now runs the lobby` }, audience: everyone });
     }
@@ -418,6 +550,8 @@ export function createGame(options: CreateGameOptions): Game {
       return { ok: false, reason: "invalid_payload" };
     }
     if (state.phase !== "playing") return { ok: false, reason: "wrong_phase" };
+    if (!player.connected) return { ok: false, reason: "not_connected" };
+    if (player.spectating) return { ok: false, reason: "spectating" };
     if (player.holedOut) return { ok: false, reason: "holed_out" };
     // Freeze (15) and Ball Grab (10) add their checks here.
     if (!player.ball.atRest) return { ok: false, reason: "ball_moving" };
@@ -545,7 +679,7 @@ export function createGame(options: CreateGameOptions): Game {
     state.obstacleTimeMs = physics.obstacleTimeMs;
 
     for (const [id, player] of Object.entries(state.players)) {
-      if (player.holedOut) continue;
+      if (!physics.hasBall(id)) continue;
       const ball = player.ball;
       const motion = physics.motion(id);
       ball.x = motion.x;
@@ -594,6 +728,10 @@ export function createGame(options: CreateGameOptions): Game {
           return join(playerId, intent.name, intent.color);
         case "leave":
           return leave(playerId);
+        case "disconnect":
+          return disconnect(playerId);
+        case "reconnect":
+          return reconnect(playerId);
         case "start":
           return start(playerId);
         case "configure":

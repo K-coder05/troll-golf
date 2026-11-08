@@ -31,6 +31,7 @@ export const PlayerSchema = schema(
     name: t.string(),
     color: t.string(),
     connected: t.boolean(),
+    spectating: t.boolean(),
     ball: BallSchema,
     strokes: t.array("number"),
     holedOut: t.boolean(),

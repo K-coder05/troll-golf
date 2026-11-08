@@ -38,6 +38,7 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
     synced.name = player.name;
     synced.color = player.color;
     synced.connected = player.connected;
+    synced.spectating = player.spectating;
     const ball = synced.ball;
     ball.x = player.ball.x;
     ball.y = player.ball.y;

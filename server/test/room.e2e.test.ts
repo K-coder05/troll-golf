@@ -2,7 +2,8 @@
  * Smoke test of the real server over WebSockets with the real client SDK.
  * The spec leaves the adapter to playtests; this only proves the wiring:
  * room codes, joining by code, the lobby (only the room creator configures and
- * starts), the 8-Player cap and a shot reaching everyone.
+ * starts), the 8-Player cap, a shot reaching everyone, and a dropped Player
+ * reconnecting as themselves.
  */
 import { Client, type Room } from "@colyseus/sdk";
 import type { Server } from "@colyseus/core";
@@ -116,6 +117,44 @@ describe("GolfRoom over the network", () => {
     ben.send("start", {});
     await waitFor(() => stateOf(ben).phase === "countdown");
   });
+
+  it("a dropped Player is shown disconnected, then reconnects as the same Player with their Strokes", async () => {
+    const maya = listen(track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366" })));
+    const ben = listen(track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff" })));
+    await waitFor(() => playersOf(maya).size === 2);
+    maya.send("configure", { courseId: "placeholder" });
+    await waitFor(() => stateOf(ben).courseId === "placeholder");
+    maya.send("start", {});
+    await waitFor(() => stateOf(ben).phase === "playing", 5000);
+
+    const benSeenByMaya = () => playersOf(maya).get(ben.sessionId);
+    ben.send("shoot", { angle: -Math.PI / 2, power: 0.2 });
+    await waitFor(() => benSeenByMaya()?.strokes[0] === 1 && benSeenByMaya()!.ball.atRest, 5000);
+    const sessionId = ben.sessionId;
+
+    // A Wi-Fi blip: the socket closes without a goodbye; the SDK reconnects on its own.
+    ben.reconnection.minUptime = 0;
+    void ben.leave(false);
+    await waitFor(() => benSeenByMaya()?.connected === false);
+    await waitFor(() => benSeenByMaya()?.connected === true, 5000);
+    expect(ben.sessionId).toBe(sessionId);
+    expect(benSeenByMaya()?.strokes[0]).toBe(1);
+
+    // A page reload: a brand-new client comes back with the stored reconnection token.
+    ben.reconnection.enabled = false;
+    const token = ben.reconnectionToken;
+    void ben.leave(false);
+    await waitFor(() => benSeenByMaya()?.connected === false);
+    const back = listen(track(await newClient().reconnect(token)));
+    expect(back.sessionId).toBe(sessionId);
+    await waitFor(() => benSeenByMaya()?.connected === true);
+    await waitFor(() => playersOf(back).get(sessionId)?.strokes[0] === 1);
+    expect(stateOf(back).phase).toBe("playing");
+    // And plays on: a second shot counts on top of the first.
+    await waitFor(() => playersOf(back).get(sessionId)?.ball.atRest === true);
+    back.send("shoot", { angle: 0, power: 0.2 });
+    await waitFor(() => benSeenByMaya()?.strokes[0] === 2, 3000);
+  }, 20_000);
 
   it("refuses a join with a wrong code", async () => {
     await expect(newClient().joinById("ZZZZ", { name: "Lost", color: "#000000" })).rejects.toThrow();

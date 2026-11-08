@@ -6,6 +6,8 @@ interface SyncedPlayer {
   name: string;
   color: string;
   holedOut: boolean;
+  connected: boolean;
+  spectating: boolean;
   standing: number;
   strokes: ArrayLike<number> & { at(i: number): number | undefined };
 }
@@ -95,7 +97,7 @@ export function startHud(room: Room, hole: () => HoleMessage | null, view: HudVi
       els.holeInfo,
       state.phase === "lobby"
         ? "Waiting to start"
-        : `Hole ${state.holeIndex + 1}/${holeCount}${holeName} · Par ${par} · ${strokes} stroke${strokes === 1 ? "" : "s"}${me?.holedOut ? " · in!" : ""}`,
+        : `Hole ${state.holeIndex + 1}/${holeCount}${holeName} · Par ${par} · ${strokes} stroke${strokes === 1 ? "" : "s"}${me?.holedOut ? " · in!" : ""}${me?.spectating ? " (missed, at the stroke cap)" : ""}`,
     );
 
     // Timer top-centre while playing.
@@ -128,17 +130,20 @@ export function startHud(room: Room, hole: () => HoleMessage | null, view: HudVi
       }
     }
 
-    // Holed Out: watching someone else's ball.
+    // Holed Out, or a late joiner waiting for the next Hole: watching someone else's ball.
     const watched = view.spectating ? state.players.get(view.spectating) : undefined;
-    els.spectate.hidden = !(state.phase === "playing" && me?.holedOut);
+    const waiting = !!me?.spectating && state.phase !== "gameEnd";
+    els.spectate.hidden = !((state.phase === "playing" && me?.holedOut) || (waiting && !between(state.phase)));
+    const watching = watched ? `Watching ${watched.name}` : "Spectating";
     setText(
       els.spectate,
-      watched ? `In the Cup! Watching ${watched.name} · click a ball to watch it` : "In the Cup! Spectating · click a ball to watch it",
+      waiting
+        ? `You joined mid-game: you'll play from the next Hole · ${watching} · click a ball to watch it`
+        : `In the Cup! ${watching} · click a ball to watch it`,
     );
 
     // Scoreboard between Holes, final results at the end, and while Tab is held during a Hole.
-    const between = state.phase === "holeEnd" || state.phase === "gameEnd";
-    const showBoard = between || (tabHeld && live);
+    const showBoard = between(state.phase) || (tabHeld && live);
     els.board.hidden = !showBoard;
     if (showBoard) {
       const final = state.phase === "gameEnd";
@@ -148,7 +153,7 @@ export function startHud(room: Room, hole: () => HoleMessage | null, view: HudVi
         els.boardFooter,
         final
           ? "Thanks for playing!"
-          : !between
+          : !between(state.phase)
             ? "Standing: total Strokes so far, closest to the Cup breaks ties"
             : state.holeIndex + 1 < holeCount
               ? `Next Hole in ${next}s`
@@ -179,8 +184,13 @@ function standingsHtml(state: SyncedState, myId: string): string {
   return rows
     .map(({ id, p, total }) => {
       const mark = p.holedOut ? " ✓" : id === state.leaderId ? " ★" : "";
-      const cls = [id === myId ? "me" : "", p.holedOut ? "out" : ""].join(" ");
-      return `<tr class="${cls}"><td class="num">${p.standing}.</td><td class="name"><span class="dot" style="background:${escapeHtml(p.color)}"></span> ${escapeHtml(p.name)}${mark}</td><td class="num">${p.strokes.at(state.holeIndex) ?? 0}</td><td class="num"><b>${total}</b></td></tr>`;
+      const badge = p.spectating ? " <span class=\"badge\">next Hole</span>" : !p.connected ? " <span class=\"badge\">offline</span>" : "";
+      const cls = [
+        id === myId ? "me" : "",
+        p.holedOut ? "out" : "",
+        p.spectating ? "waiting" : !p.connected ? "offline" : "",
+      ].join(" ");
+      return `<tr class="${cls}"><td class="num">${p.standing}.</td><td class="name"><span class="dot" style="background:${escapeHtml(p.color)}"></span> ${escapeHtml(p.name)}${mark}${badge}</td><td class="num">${p.strokes.at(state.holeIndex) ?? 0}</td><td class="num"><b>${total}</b></td></tr>`;
     })
     .join("");
 }
@@ -209,6 +219,11 @@ function scoreboardHtml(state: SyncedState, myId: string, final: boolean): strin
     })
     .join("");
   return `<thead>${head}</thead><tbody>${parRow}${body}</tbody>`;
+}
+
+/** The scoreboard phases: between Holes and the final results. */
+function between(phase: Phase): boolean {
+  return phase === "holeEnd" || phase === "gameEnd";
 }
 
 function vsPar(diff: number): string {

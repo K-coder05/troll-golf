@@ -41,7 +41,17 @@ export interface PlayerState {
   name: string;
   /** CSS hex colour, e.g. "#ff3366". */
   color: string;
+  /**
+   * False while the Player's connection is gone (they may still reconnect).
+   * A disconnected ball stays where it is, has no collisions and can't be
+   * targeted; the Player keeps everything else (ball, Strokes, held Item).
+   */
   connected: boolean;
+  /**
+   * True for a late joiner waiting for the next Hole. Their ball isn't on the
+   * course, and each Hole they missed is already scored at its stroke cap.
+   */
+  spectating: boolean;
   ball: BallState;
   /** Strokes per Hole, indexed by Hole number (0-based). Includes penalties. */
   strokes: number[];

@@ -10,6 +10,7 @@ export {
   SCOREBOARD_MS,
   CUP_CAPTURE_SPEED,
   unfinishedScore,
+  isTargetable,
   type Game,
   type CreateGameOptions,
 } from "./game";

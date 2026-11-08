@@ -10,7 +10,7 @@ import {
   type JoinOptions,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
-import { createRoom, joinRoom } from "./net/connection";
+import { createRoom, forgetSeat, joinRoom, rejoinRoom, rememberSeat } from "./net/connection";
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 import { startHud, type HudView } from "./ui/hud";
 import { startLobby } from "./ui/lobby";
@@ -39,6 +39,14 @@ function show(screen: Screen): void {
 const linkedCode = new URLSearchParams(location.search).get("room");
 if (linkedCode) codeInput.value = normalizeRoomCode(linkedCode);
 show(linkedCode ? "join-screen" : "title");
+// After a page reload mid-game this tab still has its seat: come back as the same Player.
+if (linkedCode && isValidRoomCode(normalizeRoomCode(linkedCode))) {
+  show("game");
+  void rejoinRoom(normalizeRoomCode(linkedCode)).then((room) => {
+    if (room) enterRoom(room);
+    else show("join-screen");
+  });
+}
 $("play").addEventListener("click", () => {
   show("join-screen");
   nameInput.focus();
@@ -120,6 +128,7 @@ form.addEventListener("submit", (event) => {
 function enterRoom(room: Room): void {
   $("room-code").textContent = room.roomId;
   history.replaceState(null, "", `?room=${room.roomId}`);
+  rememberSeat(room);
 
   // Register handlers right away: the server sends these as soon as we join.
   let hole: HoleMessage | null = null;
@@ -138,8 +147,17 @@ function enterRoom(room: Room): void {
     onPhase: (inLobby) => show(inLobby ? "lobby-screen" : "game"),
   });
   show("lobby-screen");
+  // A dropped connection: the SDK keeps retrying with our reconnection token
+  // while the server holds our seat (and our ball, frozen). Say so meanwhile.
+  const connectionBanner = $("connection");
+  room.onDrop(() => (connectionBanner.hidden = false));
+  room.onReconnect(() => {
+    connectionBanner.hidden = true;
+    rememberSeat(room);
+  });
   room.onLeave(() => {
-    // Back to the join screen with the code still in the address bar.
+    // Left for good (or reconnecting failed): back to the join screen with the code still in the address bar.
+    forgetSeat();
     location.reload();
   });
 

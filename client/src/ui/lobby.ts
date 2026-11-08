@@ -8,7 +8,7 @@ interface SyncedState {
   courseId: string;
   players: {
     size: number;
-    forEach(cb: (player: { name: string; color: string }, id: string) => void): void;
+    forEach(cb: (player: { name: string; color: string; connected: boolean }, id: string) => void): void;
     get(id: string): { name: string } | undefined;
   };
 }
@@ -87,7 +87,13 @@ export function startLobby(room: Room, options: LobbyOptions): void {
 
     const rows: string[] = [];
     state.players.forEach((p, id) => {
-      const tags = [id === room.sessionId ? "you" : "", id === state.creatorId ? "room creator" : ""].filter(Boolean).join(" · ");
+      const tags = [
+        id === room.sessionId ? "you" : "",
+        id === state.creatorId ? "room creator" : "",
+        p.connected ? "" : "reconnecting…",
+      ]
+        .filter(Boolean)
+        .join(" · ");
       rows.push(
         `<li><span class="dot" style="background:${escapeHtml(p.color)}"></span><span>${escapeHtml(p.name)}</span><span class="tag">${tags}</span></li>`,
       );

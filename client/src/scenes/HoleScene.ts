@@ -21,6 +21,8 @@ interface SyncedPlayer {
   color: string;
   ball: BallState;
   holedOut: boolean;
+  connected: boolean;
+  spectating: boolean;
 }
 interface SyncedState {
   phase: Phase;
@@ -47,6 +49,8 @@ export interface HoleSceneData {
 interface BallSprite {
   circle: Phaser.GameObjects.Arc;
   label: Phaser.GameObjects.Text;
+  /** "offline" tag under a disconnected Player's ball. */
+  badge: Phaser.GameObjects.Text;
 }
 
 /** Drag length (screen px) for a full-power shot. */
@@ -196,13 +200,18 @@ export class HoleScene extends Phaser.Scene {
   private canShoot(): boolean {
     const state = this.syncedState();
     const me = state?.players?.get(this.room.sessionId);
-    return state?.phase === "playing" && !!me && !me.holedOut && me.ball.atRest;
+    return state?.phase === "playing" && !!me && !me.holedOut && !me.spectating && me.ball.atRest;
   }
 
-  /** A Holed-Out Player watches the others while the Hole goes on. */
+  /**
+   * A Holed-Out Player watches the others while the Hole goes on, and so
+   * does a late joiner waiting for the next Hole.
+   */
   private isSpectating(): boolean {
     const state = this.syncedState();
-    return state?.phase === "playing" && !!state.players.get(this.room.sessionId)?.holedOut;
+    const me = state?.players.get(this.room.sessionId);
+    if (!state || !me) return false;
+    return (state.phase === "playing" && me.holedOut) || (me.spectating && state.phase !== "gameEnd");
   }
 
   private pickBallToWatch(at: Phaser.Math.Vector2): void {
@@ -210,7 +219,7 @@ export class HoleScene extends Phaser.Scene {
     let bestDistance = PICK_RADIUS;
     this.syncedState()?.players.forEach((player, id) => {
       const sprite = this.balls.get(id);
-      if (player.holedOut || !sprite) return;
+      if (!onCourse(player) || !sprite) return;
       const d = Phaser.Math.Distance.Between(at.x, at.y, sprite.circle.x, sprite.circle.y);
       if (d < bestDistance) {
         best = id;
@@ -228,7 +237,7 @@ export class HoleScene extends Phaser.Scene {
       return this.room.sessionId;
     }
     const chosen = state.players.get(this.watchChoice);
-    const id = chosen && !chosen.holedOut ? this.watchChoice : state.leaderId;
+    const id = chosen && onCourse(chosen) ? this.watchChoice : state.leaderId;
     this.view.spectating = id;
     return id || this.room.sessionId;
   }
@@ -408,6 +417,17 @@ export class HoleScene extends Phaser.Scene {
             })
             .setOrigin(0.5, 1)
             .setDepth(6),
+          badge: this.add
+            .text(0, 0, "offline", {
+              fontFamily: "system-ui, sans-serif",
+              fontSize: "10px",
+              fontStyle: "bold",
+              color: "#ffffff",
+              backgroundColor: "#8a2b2b",
+              padding: { x: 3, y: 1 },
+            })
+            .setOrigin(0.5, 0)
+            .setDepth(6),
         };
         this.balls.set(id, sprite);
       }
@@ -418,15 +438,22 @@ export class HoleScene extends Phaser.Scene {
       const at = this.snapshots.sample(id, now) ?? player.ball;
       sprite.circle.setPosition(at.x, at.y);
       sprite.label.setText(player.name).setPosition(sprite.circle.x, sprite.circle.y - BALL_RADIUS - 4);
-      // A ball in the Cup is gone from the course; its Player spectates.
-      sprite.circle.setVisible(!player.holedOut);
-      sprite.label.setVisible(!player.holedOut);
+      // A ball in the Cup is gone from the course; its Player spectates. So is a late joiner's until the next Hole.
+      const visible = onCourse(player);
+      sprite.circle.setVisible(visible);
+      sprite.label.setVisible(visible);
+      // A disconnected Player's ball stays put, greyed out, with an "offline" badge, until they reconnect.
+      const offline = !player.connected;
+      sprite.circle.setAlpha(offline ? 0.35 : 1);
+      sprite.label.setAlpha(offline ? 0.6 : 1);
+      sprite.badge.setVisible(visible && offline).setPosition(sprite.circle.x, sprite.circle.y + BALL_RADIUS + 2);
     });
 
     for (const [id, sprite] of this.balls) {
       if (seen.has(id)) continue;
       sprite.circle.destroy();
       sprite.label.destroy();
+      sprite.badge.destroy();
       this.balls.delete(id);
     }
   }
@@ -491,6 +518,11 @@ export class HoleScene extends Phaser.Scene {
   private worldPoint(pointer: Phaser.Input.Pointer): Phaser.Math.Vector2 {
     return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
   }
+}
+
+/** The ball is on the course: not in the Cup, and not a late joiner's waiting for the next Hole. */
+function onCourse(player: SyncedPlayer): boolean {
+  return !player.holedOut && !player.spectating;
 }
 
 function pointInPoly(x: number, y: number, polygon: { x: number; y: number }[]): boolean {
