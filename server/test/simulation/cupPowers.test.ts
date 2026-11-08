@@ -40,7 +40,7 @@ function game(): TestGame {
 }
 const power = <K extends "moveCup" | "cupSize" | "lipOut">(t: TestGame, p: K, params: Parameters<typeof t.adminPower<K>>[2], mode: "stealth" | "loud" = "stealth") =>
   t.adminPower("maya", p, params, mode);
-const fxKinds = (t: TestGame) => t.drain().filter((e) => e.type === "fx").map((e) => (e.payload as { kind: string }).kind);
+const fxKinds = (t: TestGame) => t.drain().filter((e) => e.type === "fx" && e.payload.kind !== "putt").map((e) => (e.payload as { kind: string }).kind);
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 /** Aim a ball at a point and wait for it to settle or drop. */
 function putt(t: TestGame, id: string, at: { x: number; y: number }, powerLevel = SOFT): void {
@@ -179,14 +179,14 @@ describe("Lip-Out", () => {
     const natural = game();
     natural.shoot("maya", 0, 0.8);
     natural.advance(1500);
-    const naturalFx = natural.drain().filter((e) => e.type === "fx");
+    const naturalFx = natural.drain().filter((e) => e.type === "fx" && e.payload.kind !== "putt");
     expect(naturalFx).toHaveLength(1);
 
     const forced = game();
     power(forced, "lipOut", { targetId: "maya" });
     forced.drain();
     putt(forced, "maya", { x: 500, y: 300 });
-    const forcedEvents = TestGame.nonAdmin(forced.drain());
+    const forcedEvents = TestGame.nonAdmin(forced.drain()).filter((e) => !(e.type === "fx" && e.payload.kind === "putt"));
     expect(forcedEvents).toEqual(naturalFx);
   });
 

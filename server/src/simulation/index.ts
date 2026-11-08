@@ -9,6 +9,8 @@ export {
   COUNTDOWN_MS,
   SCOREBOARD_MS,
   CUP_CAPTURE_SPEED,
+  EMOTE_GAP_MS,
+  NEAR_MISS_MARGIN,
   unfinishedScore,
   type Game,
   type CreateGameOptions,

@@ -72,6 +72,23 @@
         position: fixed; bottom: 104px; left: 50%; transform: translateX(-50%); pointer-events: none;
         padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,0.55); font-size: 14px; white-space: nowrap;
       }
+      #mute {
+        position: fixed; bottom: 12px; left: 12px; z-index: 12; width: 36px; height: 36px; padding: 0;
+        border: 0; border-radius: 50%; background: rgba(0,0,0,0.45); font-size: 18px; cursor: pointer;
+      }
+      #emote-wheel {
+        position: fixed; left: 50%; top: 50%; z-index: 20; width: 220px; height: 220px; transform: translate(-50%, -50%);
+        border-radius: 50%; background: rgba(0,0,0,0.5);
+      }
+      #emote-wheel .emote {
+        position: absolute; width: 76px; height: 76px; border: 0; border-radius: 50%; font-size: 26px; font-weight: 800;
+        color: var(--text); background: var(--panel); cursor: pointer;
+      }
+      #emote-wheel .emote:hover { background: #2d6a41; }
+      #emote-wheel .emote-0 { left: 72px; top: 4px; }
+      #emote-wheel .emote-1 { left: 140px; top: 72px; }
+      #emote-wheel .emote-2 { left: 72px; top: 140px; }
+      #emote-wheel .emote-3 { left: 4px; top: 72px; }
       @media (max-width: 600px) {
         #standings { top: auto; bottom: 12px; }
         #spectate { bottom: auto; top: 64px; }
@@ -225,7 +242,7 @@
     <div id="hud" hidden>
       <div id="hole-info"></div>
       <div class="hint">Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
-      <div class="hint">Drag back from your ball and release to shoot · tap Space to use your Item (attacks hit the Leader), hold Space to pick a target · hold Tab to see the whole Hole and the scoreboard</div>
+      <div class="hint">Drag back from your ball and release to shoot · tap Space to use your Item (attacks hit the Leader), hold Space to pick a target · hold Tab to see the whole Hole and the scoreboard · Q for emotes</div>
     </div>
     <div id="timer" hidden></div>
     <div id="standings" hidden><table id="standings-table"></table></div>
@@ -236,6 +253,8 @@
     <div id="kill-feed"></div>
     <div id="target-picker" hidden><h3>Pick a target: click a ball or press 1–8</h3><div id="target-list"></div></div>
     <div id="frozen-hint" hidden>🧊 Frozen! Mash click to break free</div>
+    <button id="mute" type="button" aria-label="Toggle sound"></button>
+    <div id="emote-wheel" hidden></div>
     <div id="connection" hidden>Connection lost · reconnecting…</div>
     <div id="banner" hidden></div>
     <div id="gods-banner" hidden><div id="gods-text"></div><div id="gods-detail"></div></div>

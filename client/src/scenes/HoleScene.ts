@@ -3,6 +3,8 @@ import {
   BALL_RADIUS,
   type BallState,
   type CupState,
+  type EmoteEventMessage,
+  type EmoteKind,
   type FxMessage,
   type HoleMessage,
   type Phase,
@@ -22,7 +24,9 @@ import {
   type EffectKind,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
+import { ParticlePool } from "../fx/particles";
 import { startSiren } from "../fx/siren";
+import { playSound } from "../fx/sound";
 import { ITEM_RENDERERS } from "../items";
 import { placement } from "../items/bananaMine";
 import { crosshair } from "../items/golfGun";
@@ -71,6 +75,8 @@ export interface HoleSceneData {
   hole: () => HoleMessage | null;
   /** Hands over the one-shot effects received since the last call. */
   takeFx: () => FxMessage[];
+  /** Hands over the emotes received since the last call. */
+  takeEmotes: () => EmoteEventMessage[];
   /** Shared with the HUD: whose ball a Holed-Out Player is watching. */
   view: HudView;
 }
@@ -133,6 +139,7 @@ export class HoleScene extends Phaser.Scene {
   private room!: Room;
   private holeSource!: () => HoleMessage | null;
   private takeFx!: () => FxMessage[];
+  private takeEmotes!: () => EmoteEventMessage[];
   private view!: HudView;
   /** Ball positions from recent patches; balls are drawn ~100 ms behind, interpolated. */
   private snapshots = new SnapshotBuffer();
@@ -165,6 +172,12 @@ export class HoleScene extends Phaser.Scene {
   private aimPoint: Phaser.Math.Vector2 | null = null;
   private camCenter = new Phaser.Math.Vector2(0, 0);
   private cameraHeld = false;
+  private particles!: ParticlePool;
+  /** Emotes floating over balls. */
+  private emotes: { text: Phaser.GameObjects.Text; id: string; age: number }[] = [];
+  /** A near-miss zoom: the camera swings to the Cup and pushes in for a moment. */
+  private nearMissFocus: { x: number; y: number; until: number } | null = null;
+  private nearMissZoom = { v: 1 };
 
   constructor() {
     super("hole");
@@ -174,6 +187,7 @@ export class HoleScene extends Phaser.Scene {
     this.room = data.room;
     this.holeSource = data.hole;
     this.takeFx = data.takeFx;
+    this.takeEmotes = data.takeEmotes;
     this.view = data.view;
   }
 
@@ -185,6 +199,7 @@ export class HoleScene extends Phaser.Scene {
     this.obstacles = this.add.graphics().setDepth(3);
     this.aim = this.add.graphics().setDepth(10);
     this.pickerMarks = this.add.graphics().setDepth(9);
+    this.particles = new ParticlePool(this);
 
     const keyboard = this.input.keyboard!;
     // Capture Tab so the browser doesn't move focus away from the game.
@@ -257,12 +272,15 @@ export class HoleScene extends Phaser.Scene {
     });
   }
 
-  override update(): void {
+  override update(_time: number, delta: number): void {
     const hole = this.holeSource();
     if (hole && hole !== this.drawnHole) this.drawHole(hole);
     if (!this.drawnHole) return;
 
     for (const fx of this.takeFx()) this.playFx(fx);
+    for (const emote of this.takeEmotes()) this.playEmote(emote);
+    this.particles.update(delta);
+    this.updateEmotes(delta);
     this.renderTerrain();
     this.renderCup();
     this.renderObstacles();
@@ -624,42 +642,37 @@ export class HoleScene extends Phaser.Scene {
 
   /** An Item Box shatters: shards fly out. */
   private playBoxShatter(fx: FxMessage): void {
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 + 0.3;
-      const shard = this.add.rectangle(fx.x, fx.y, 5, 5, i % 2 ? 0xffd24d : 0xffffff).setDepth(8);
-      this.tweens.add({
-        targets: shard,
-        x: fx.x + Math.cos(a) * 30,
-        y: fx.y + Math.sin(a) * 30,
-        angle: 180,
-        alpha: 0,
-        duration: 450,
-        onComplete: () => shard.destroy(),
-      });
-    }
+    this.particles.burst(fx.x, fx.y, { count: 14, colours: [0xffd24d, 0xffffff], speed: 150, life: 550, size: 5, gravity: 120 });
+    const ring = this.add.circle(fx.x, fx.y, 6).setStrokeStyle(2, 0xffd24d).setDepth(8);
+    this.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
   }
 
   /** A Shield popping or ice cracking: a ring and shards flying off the ball. */
   private playShards(fx: FxMessage, colour: number): void {
     const ring = this.add.circle(fx.x, fx.y, BALL_RADIUS + 6).setStrokeStyle(3, colour).setDepth(8);
     this.tweens.add({ targets: ring, scale: 2.2, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 + 0.2;
-      const shard = this.add.rectangle(fx.x, fx.y, 4, 4, colour).setDepth(8);
-      this.tweens.add({
-        targets: shard,
-        x: fx.x + Math.cos(a) * 26,
-        y: fx.y + Math.sin(a) * 26,
-        angle: 200,
-        alpha: 0,
-        duration: 450,
-        onComplete: () => shard.destroy(),
-      });
-    }
+    this.particles.burst(fx.x, fx.y, { count: 10, colours: [colour], speed: 110, life: 450, size: 4 });
   }
 
   /** Short expanding ring and droplets at a point. */
   private playFx(fx: FxMessage): void {
+    this.playFxSound(fx);
+    // Hits shake the screen: an Item landing on a ball, a Shield popping. (The Golf Gun and Nuke shake themselves.)
+    if (fx.kind === "shieldPop" || (fx.kind === "itemUse" && fx.targetId && fx.item !== "golfGun")) {
+      this.cameras.main.shake(130, 0.005);
+    }
+    if (fx.kind === "putt") return;
+    if (fx.kind === "wallHit") {
+      // A spark at the contact; a hard hit also rattles the screen a little.
+      const hard = (fx.intensity ?? 0) > 0.6;
+      this.particles.burst(fx.x, fx.y, { count: hard ? 6 : 3, colours: [0xffffff, 0xd9b38c], speed: 90, life: 280, size: 3 });
+      if (hard) this.cameras.main.shake(90, 0.003);
+      return;
+    }
+    if (fx.kind === "nearMiss") {
+      this.playNearMiss(fx);
+      return;
+    }
     if (fx.kind === "nukeSiren" || fx.kind === "nukeBlast" || fx.kind === "nukeAbort") {
       this.playNukeFx(fx);
       return;
@@ -702,18 +715,125 @@ export class HoleScene extends Phaser.Scene {
     const scale = fx.kind === "splash" || fx.kind === "holeOut" ? 5 : 3;
     this.tweens.add({ targets: ring, scale, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
     if (fx.kind !== "splash" && fx.kind !== "holeOut") return;
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const drop = this.add.circle(fx.x, fx.y, 2, colour).setDepth(8);
-      this.tweens.add({
-        targets: drop,
-        x: fx.x + Math.cos(a) * 22,
-        y: fx.y + Math.sin(a) * 22 - 6,
-        alpha: 0,
-        duration: 500,
-        onComplete: () => drop.destroy(),
-      });
+    // Droplets arc up and fall back.
+    this.particles.burst(fx.x, fx.y, {
+      count: fx.kind === "splash" ? 16 : 12,
+      colours: [colour, 0xffffff],
+      speed: 170,
+      life: 600,
+      size: 3,
+      gravity: 380,
+      heading: -Math.PI / 2,
+      spread: 1.1,
+    });
+  }
+
+  /** The sound that goes with a public fx. Everything here is already visible to everyone. */
+  private playFxSound(fx: FxMessage): void {
+    switch (fx.kind) {
+      case "putt":
+        return playSound("putt", fx.intensity);
+      case "wallHit":
+        return playSound("clink", fx.intensity);
+      case "splash":
+      case "void":
+        return playSound("splash");
+      case "holeOut":
+        return playSound("holeOut");
+      case "lipOut":
+      case "nearMiss":
+        return playSound("rattle");
+      case "boost":
+        return playSound("whoosh");
+      case "teleport":
+        return playSound("zap");
+      case "itemBox":
+        return playSound("glass");
+      case "shieldPop":
+        return playSound("pop");
+      case "thaw":
+        return playSound("crackle");
+      case "divineBlock":
+      case "grab":
+        return playSound("blip");
+      case "nukeBlast":
+        return playSound("boom");
+      case "itemUse":
+        if (fx.item === "freezeRay") return playSound("crackle");
+        if (fx.item === "golfGun") return playSound("gunshot");
+        return playSound("blip");
+      default:
+        return; // nukeSiren has its own siren; inkScreen is covered by the itemUse everyone hears
     }
+  }
+
+  /**
+   * A near-miss at the Cup: if it was the ball being watched, the camera
+   * swings to the Cup and pushes in while tweens run at a crawl.
+   */
+  private playNearMiss(fx: FxMessage): void {
+    if (fx.targetId !== this.followedId() || this.tab.isDown) return;
+    this.nearMissFocus = { x: fx.x, y: fx.y, until: performance.now() + 900 };
+    this.tweens.killTweensOf(this.nearMissZoom);
+    this.nearMissZoom.v = 1;
+    this.tweens.timeScale = 0.4;
+    this.tweens.add({
+      targets: this.nearMissZoom,
+      v: 1.4,
+      duration: 350,
+      yoyo: true,
+      hold: 250,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        this.nearMissZoom.v = 1;
+        this.tweens.timeScale = 1;
+      },
+    });
+  }
+
+  private static readonly EMOTE_TEXT: Record<EmoteKind, string> = {
+    laugh: "\u{1F602}",
+    salty: "\u{1F9C2}",
+    gg: "GG",
+    what: "???",
+  };
+
+  /** An emote floats up over a Player's ball. */
+  private playEmote(message: EmoteEventMessage): void {
+    if (!HoleScene.EMOTE_TEXT[message.kind]) return;
+    playSound("emote");
+    // At most one per Player at a time, and a handful overall.
+    for (const old of this.emotes.filter((e) => e.id === message.playerId)) old.text.destroy();
+    this.emotes = this.emotes.filter((e) => e.id !== message.playerId);
+    if (this.emotes.length >= 12) this.emotes.shift()?.text.destroy();
+    const text = this.add
+      .text(0, 0, HoleScene.EMOTE_TEXT[message.kind], {
+        fontSize: message.kind === "laugh" || message.kind === "salty" ? "30px" : "22px",
+        fontStyle: "bold",
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(12);
+    this.emotes.push({ text, id: message.playerId, age: 0 });
+  }
+
+  private updateEmotes(deltaMs: number): void {
+    const LIFE = 2200;
+    this.emotes = this.emotes.filter((e) => {
+      e.age += deltaMs;
+      const sprite = this.balls.get(e.id);
+      if (e.age >= LIFE || !sprite || !e.text.active) {
+        e.text.destroy();
+        return false;
+      }
+      const t = e.age / LIFE;
+      e.text.setPosition(sprite.circle.x, sprite.circle.y - BALL_RADIUS - 18 - t * 34);
+      e.text.setAlpha(t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
+      e.text.setScale(t < 0.1 ? 0.5 + t * 5 : 1);
+      return true;
+    });
   }
 
   private nukeOverlay: Phaser.GameObjects.Rectangle | null = null;
@@ -934,9 +1054,11 @@ export class HoleScene extends Phaser.Scene {
 
     // Overview: the whole Hole is visible, so let the camera leave its bounds to centre it.
     cam.useBounds = !overview && followZoom > fitZoom;
-    cam.setZoom(Phaser.Math.Linear(cam.zoom, overview ? fitZoom : followZoom, 0.15));
+    const pulse = overview ? 1 : this.nearMissZoom.v;
+    cam.setZoom(Phaser.Math.Linear(cam.zoom, (overview ? fitZoom : followZoom) * pulse, 0.15));
 
-    const target = overview ? { x: hole.width / 2, y: hole.height / 2 } : this.balls.get(this.followedId())?.circle;
+    const focus = this.nearMissFocus && performance.now() < this.nearMissFocus.until && !overview ? this.nearMissFocus : null;
+    const target = focus ?? (overview ? { x: hole.width / 2, y: hole.height / 2 } : this.balls.get(this.followedId())?.circle);
     if (target && !this.cameraHeld) {
       this.camCenter.x = Phaser.Math.Linear(this.camCenter.x, target.x, 0.12);
       this.camCenter.y = Phaser.Math.Linear(this.camCenter.y, target.y, 0.12);

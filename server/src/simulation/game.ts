@@ -20,6 +20,8 @@ import {
   type GameSettings,
   type ItemCatalogue,
   type ItemId,
+  EMOTE_KINDS,
+  type EmoteKind,
   type ItemTuning,
   type MagnetPolarity,
   type NukeAftermath,
@@ -82,6 +84,16 @@ export const BOOST_IMPULSE = 500;
  * on for about 150 px.
  */
 export const CUP_CAPTURE_SPEED = 220;
+
+/** A moving ball that comes within this many px of the Cup's edge without dropping in is a near-miss. */
+export const NEAR_MISS_MARGIN = 36;
+/** Slower than this, a ball drifting by the Cup is not worth a slow-mo. */
+export const NEAR_MISS_MIN_SPEED = 90;
+/** Wall clinks: slower hits are silent, and one ball clinks at most this often. */
+export const WALL_HIT_MIN_SPEED = 80;
+export const WALL_HIT_GAP_MS = 120;
+/** One emote per Player per this long. */
+export const EMOTE_GAP_MS = 1000;
 /**
  * Synced-state budget for terrain edits per Hole: at most this many edits,
  * this many points in all, and this many points per stroke (a longer brush
@@ -239,6 +251,10 @@ export function createGame(options: CreateGameOptions): Game {
   const slowSteps = new Map<string, number>();
   // Balls inside the Cup's capture radius that already lipped out, so each pass lips out once.
   const lippedOut = new Set<string>();
+  /** Balls on a pass near the Cup: the closest they have been, and whether they were fast enough to count. */
+  const nearPass = new Map<string, { min: number; fast: boolean }>();
+  const lastWallHitAt = new Map<string, number>();
+  const lastEmoteAt = new Map<string, number>();
   // Players whose next would-be hole-out lips out instead (Lip-Out). Server-only, never synced.
   const pendingLipOut = new Set<string>();
   // Balls just popped out by a Lip-Out: they can't drop in until they have left the capture radius.
@@ -1012,6 +1028,7 @@ export function createGame(options: CreateGameOptions): Game {
     lippedOut.delete(id);
     cupGuarded.delete(id);
     poppedOut.delete(id);
+    nearPass.delete(id);
   }
 
   /**
@@ -1444,7 +1461,69 @@ export function createGame(options: CreateGameOptions): Game {
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
     // Cup Magnet and Ghost Ball armed earlier start working on this shot.
     effects.shot(playerId);
+    emit({
+      type: "fx",
+      payload: { kind: "putt", x: player.ball.x, y: player.ball.y, intensity: clamp(power, 0, 1) },
+      audience: everyone,
+    });
     return { ok: true };
+  }
+
+  /** Float an emote over the sender's ball. Validated and limited to one per second per Player. */
+  function emote(playerId: string, kind: unknown): IntentResult {
+    const player = state.players[playerId];
+    if (!player) return { ok: false, reason: "unknown_player" };
+    if (typeof kind !== "string" || !(EMOTE_KINDS as readonly string[]).includes(kind)) {
+      return { ok: false, reason: "invalid_payload" };
+    }
+    if (!player.connected) return { ok: false, reason: "not_connected" };
+    const now = clock.now();
+    const last = lastEmoteAt.get(playerId);
+    if (last !== undefined && now - last < EMOTE_GAP_MS) return { ok: false, reason: "rate_limited" };
+    lastEmoteAt.set(playerId, now);
+    emit({ type: "emote", payload: { playerId, kind: kind as EmoteKind }, audience: everyone });
+    return { ok: true };
+  }
+
+  /**
+   * Near-miss: a ball that skims past the Cup without ever reaching its edge.
+   * Judged when it leaves the zone or stops in it; a lip-out or a drop is
+   * already its own fx.
+   */
+  function trackNearMiss(player: PlayerState): void {
+    const ball = player.ball;
+    const cup = state.cup;
+    const d = Math.hypot(ball.x - cup.x, ball.y - cup.y);
+    const pass = nearPass.get(player.id);
+    const inZone = d <= cup.radius + NEAR_MISS_MARGIN;
+    const speed = Math.hypot(ball.vx, ball.vy);
+    if (inZone && (pass || !ball.atRest)) {
+      const next = pass ?? { min: d, fast: false };
+      next.min = Math.min(next.min, d);
+      if (speed >= NEAR_MISS_MIN_SPEED) next.fast = true;
+      nearPass.set(player.id, next);
+      if (!ball.atRest) return;
+    }
+    if (!pass) return;
+    nearPass.delete(player.id);
+    if (pass.fast && pass.min > cup.radius) {
+      emit({ type: "fx", payload: { kind: "nearMiss", x: cup.x, y: cup.y, targetId: player.id }, audience: everyone });
+    }
+  }
+
+  /** Wall clinks from this step's contacts: loud enough, and not more than one per ball per moment. */
+  function emitWallHits(): void {
+    for (const hit of physics.takeWallHits()) {
+      if (hit.speed < WALL_HIT_MIN_SPEED) continue;
+      const last = lastWallHitAt.get(hit.id);
+      if (last !== undefined && elapsedMs - last < WALL_HIT_GAP_MS) continue;
+      lastWallHitAt.set(hit.id, elapsedMs);
+      emit({
+        type: "fx",
+        payload: { kind: "wallHit", x: hit.x, y: hit.y, intensity: clamp(hit.speed / 700, 0.1, 1) },
+        audience: everyone,
+      });
+    }
   }
 
   /** One mash click: Effects that react to it (Freeze: break out sooner). Only while playing. */
@@ -1464,6 +1543,7 @@ export function createGame(options: CreateGameOptions): Game {
   function sinkBall(player: PlayerState, at: Vec2): void {
     const ball = player.ball;
     const kind = surfaces.at(at);
+    nearPass.delete(player.id);
     emit({ type: "fx", payload: { kind: kind === "void" ? "void" : "splash", x: at.x, y: at.y }, audience: everyone });
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
     const shot = lastShots.get(player.id);
@@ -1623,6 +1703,7 @@ export function createGame(options: CreateGameOptions): Game {
     applyMagnet();
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
+    emitWallHits();
     state.obstacleTimeMs = physics.obstacleTimeMs;
 
     for (const [id, player] of Object.entries(state.players)) {
@@ -1641,6 +1722,7 @@ export function createGame(options: CreateGameOptions): Game {
       // A pinned (Frozen) ball is a block of ice: it can't drop into the Cup or ride pads and Teleporters.
       const pinned = physics.isPinned(id);
       if (!ball.atRest && !pinned && checkCup(player)) continue;
+      if (!pinned) trackNearMiss(player);
       // Resting balls too: Terrain Paint can put Water or Void under a ball that isn't moving.
       // It sinks like any other (the return spot is always dry, so it can't sink again where it lands).
       if (isHazard(surfaces.at(ball))) {
@@ -1699,6 +1781,8 @@ export function createGame(options: CreateGameOptions): Game {
           return aim(playerId, intent.angle, intent.power, intent.active);
         case "mash":
           return mash(playerId);
+        case "emote":
+          return emote(playerId, intent.kind);
         case "admin":
           return admin.use(playerId, intent);
         default:

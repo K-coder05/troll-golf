@@ -79,6 +79,14 @@ export interface PhysicsWorldOptions {
 
 type BodyTag = { kind: "ball"; id: string } | { kind: "wall" } | { kind: "boundary" } | { kind: "obstacle" };
 
+/** A ball striking a wall, an obstacle or the Hole's edge: where, and how fast it was going (px/s). */
+export interface WallHit {
+  id: string;
+  x: number;
+  y: number;
+  speed: number;
+}
+
 /** A pose of a moving obstacle: the bar angle of a Windmill, or the centre of a Sliding Wall. */
 export interface ObstaclePoses {
   windmills: { x: number; y: number; angle: number }[];
@@ -99,6 +107,8 @@ export class PhysicsWorld {
   /** Balls that pass through walls and obstacles (Ghost Ball). Only the Hole's edge still holds them. */
   private readonly ghosts = new Set<string>();
   private stepCount = 0;
+  /** Ball-versus-wall contacts since the last {@link takeWallHits}. */
+  private wallHits: WallHit[] = [];
 
   constructor(options: PhysicsWorldOptions) {
     this.dampingScale = options.dampingScale ?? (() => 1);
@@ -120,6 +130,33 @@ export class PhysicsWorld {
     for (const wall of hole.slidingWalls) this.wallBodies.push(this.addKinematic(wall.width, wall.height));
     this.poseObstacles(0);
     this.driveObstacles(0);
+
+    // Contacts only matter for juice (wall clinks): note which ball hit a wall and how fast.
+    this.world.on("begin-contact", (contact) => {
+      const a = contact.getFixtureA().getBody().getUserData() as BodyTag | null;
+      const b = contact.getFixtureB().getBody().getUserData() as BodyTag | null;
+      if (!a || !b) return;
+      const ball = a.kind === "ball" ? a : b.kind === "ball" ? b : null;
+      const other = ball === a ? b : a;
+      if (!ball || other.kind === "ball") return;
+      const body = this.balls.get(ball.id);
+      if (!body) return;
+      const p = body.getPosition();
+      const v = body.getLinearVelocity();
+      this.wallHits.push({
+        id: ball.id,
+        x: p.x * PIXELS_PER_METRE,
+        y: p.y * PIXELS_PER_METRE,
+        speed: Math.hypot(v.x, v.y) * PIXELS_PER_METRE,
+      });
+    });
+  }
+
+  /** The ball-versus-wall contacts since the last call (the simulation throttles and turns them into fx). */
+  takeWallHits(): WallHit[] {
+    const hits = this.wallHits;
+    this.wallHits = [];
+    return hits;
   }
 
   /** Time since play began, ms: whole physics steps, so it is exact and repeatable. */

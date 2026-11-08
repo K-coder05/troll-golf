@@ -206,7 +206,11 @@ describe("secrecy of the Admin", () => {
         else if (use.power === "giveItem") {
           expect(use.events.map((e) => e.type)).toEqual(["item"]);
           expect(use.events[0]!.audience).toEqual({ kind: "player", playerId: use.targetId });
-        } else expect(use.events).toEqual([]);
+        } else {
+          // Nothing but ambient physics juice (a ball still rolling and clinking a wall), which happens without any power.
+          const ambient = new Set(["putt", "wallHit", "nearMiss"]);
+          expect(use.events.filter((e) => !(e.type === "fx" && ambient.has(e.payload.kind)))).toEqual([]);
+        }
       } else {
         const banners = use.events.filter((e) => e.type === "banner");
         expect(banners).toHaveLength(1);

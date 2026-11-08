@@ -57,7 +57,17 @@ export interface AimMessage {
   active: boolean;
 }
 
+/** The emotes a Player can send from the emote wheel (Q). */
+export const EMOTE_KINDS = ["laugh", "salty", "gg", "what"] as const;
+export type EmoteKind = (typeof EMOTE_KINDS)[number];
+
+/** Float an emote over my ball. The server allows one per second per Player. */
+export interface EmoteMessage {
+  kind: EmoteKind;
+}
+
 export interface ClientMessages {
+  emote: EmoteMessage;
   shoot: ShootMessage;
   aim: AimMessage;
   configure: ConfigureMessage;
@@ -103,6 +113,9 @@ export interface HoleMessage {
  * `inkScreen`: sent to the victim of Ink Splat ONLY; their screen fills with ink.
  * `itemUse` of the Golf Gun: a shot from (fromX, fromY) at (x, y); `hit` says it landed (screen shake).
  * `thaw`: a Freeze ended at (x, y): the ice cracks.
+ * `putt`: a ball was hit at (x, y); `intensity` is the shot power (0..1).
+ * `wallHit`: a ball struck a wall at (x, y); `intensity` is how hard (0..1). Throttled server-side.
+ * `nearMiss`: the ball of `targetId` passed close to the Cup at (x, y) without dropping in (slow-mo zoom for whoever is watching it).
  */
 export interface FxMessage {
   kind:
@@ -121,7 +134,10 @@ export interface FxMessage {
     | "shieldPop"
     | "divineBlock"
     | "thaw"
-    | "inkScreen";
+    | "inkScreen"
+    | "putt"
+    | "wallHit"
+    | "nearMiss";
   x: number;
   y: number;
   /** `itemUse` and `shieldPop`: which Item. */
@@ -135,6 +151,14 @@ export interface FxMessage {
   fromX?: number;
   fromY?: number;
   hit?: boolean;
+  /** `putt` and `wallHit`: 0..1. */
+  intensity?: number;
+}
+
+/** An emote floating over a Player's ball, for everyone. */
+export interface EmoteEventMessage {
+  playerId: string;
+  kind: EmoteKind;
 }
 
 /**
@@ -170,6 +194,7 @@ export interface ServerMessages {
   /** Everyone: the Golf Gods banner of a Loud Admin Power. */
   banner: BannerMessage;
   courses: CoursesMessage;
+  emote: EmoteEventMessage;
   feed: FeedMessage;
   fx: FxMessage;
   hole: HoleMessage;

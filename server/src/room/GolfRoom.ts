@@ -64,6 +64,12 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     this.onMessage("mash", (client) => {
       this.game.handleIntent(client.sessionId, { type: "mash" });
     });
+    // Emotes: the simulation validates the kind and rate-limits to one per second per Player.
+    this.onMessage("emote", (client, message: unknown) => {
+      const { kind } = (message ?? {}) as { kind?: unknown };
+      this.game.handleIntent(client.sessionId, { type: "emote", kind });
+      this.flush();
+    });
     // Lobby: the simulation checks that only the room creator may do these.
     this.onMessage("configure", (client, message: unknown) => {
       const { courseId } = (message ?? {}) as { courseId?: unknown };

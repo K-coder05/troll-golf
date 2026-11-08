@@ -5,7 +5,6 @@ import type { AdminIntent } from "./admin";
  * network messages and connection events into these; the simulation decides
  * whether they are allowed.
  *
- * Later tickets add emote here.
  */
 export type Intent =
   /**
@@ -41,6 +40,8 @@ export type Intent =
   | { type: "aim"; angle: unknown; power: unknown; active?: unknown }
   /** One mash click (break out of a Freeze sooner). */
   | { type: "mash" }
+  /** Float an emote over the sender's ball. Untrusted `kind`; limited to one per second per Player. */
+  | { type: "emote"; kind: unknown }
   /**
    * Use an Admin Power. Untrusted: the simulation checks that the sender is
    * the Admin and validates power, mode and params (see admin.ts).
@@ -115,6 +116,8 @@ export type IntentRejection =
   /** A mash with no Effect that reacts to it. */
   | "no_effect"
   /** Spawn Wall that would sit on the Cup. */
-  | "wall_blocked";
+  | "wall_blocked"
+  /** A second emote within a second of the last one. */
+  | "rate_limited";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

@@ -6,6 +6,7 @@ import {
   normalizeRoomCode,
   type CourseSummary,
   type CoursesMessage,
+  type EmoteEventMessage,
   type FeedMessage,
   type FxMessage,
   type HoleMessage,
@@ -16,9 +17,13 @@ import type { AdminBundle } from "./adminHost";
 import { createRoom, forgetSeat, joinRoom, rejoinRoom, rememberSeat, serverResource } from "./net/connection";
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 import { startHud, type HudView } from "./ui/hud";
+import { startEmoteWheel } from "./ui/emoteWheel";
 import { startItemSlot } from "./ui/itemSlot";
 import { startKillFeed } from "./ui/killFeed";
 import { startLobby } from "./ui/lobby";
+import { startMuteButton } from "./ui/muteButton";
+
+startMuteButton();
 
 // The Hole scene, once it's up; the admin bundle asks it for world coordinates and hit-tests.
 let holeScene: HoleScene | null = null;
@@ -156,6 +161,8 @@ function enterRoom(room: Room): void {
   room.onMessage("courses", (message: CoursesMessage) => (courses = message.courses));
   const pendingFx: FxMessage[] = [];
   room.onMessage("fx", (message: FxMessage) => pendingFx.push(message));
+  const pendingEmotes: EmoteEventMessage[] = [];
+  room.onMessage("emote", (message: EmoteEventMessage) => pendingEmotes.push(message));
   room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
   room.onMessage("banner", (message: BannerMessage) => showGodsBanner(message));
   // Only the authenticated Admin's session is ever sent this; everyone else never loads anything.
@@ -165,6 +172,7 @@ function enterRoom(room: Room): void {
   startHud(room, () => hole, view);
   startItemSlot(room);
   startKillFeed(room);
+  startEmoteWheel(room);
   startLobby(room, {
     courses: () => courses,
     // The lobby screen covers the game until the room creator starts it.
@@ -189,6 +197,7 @@ function enterRoom(room: Room): void {
     room,
     hole: () => hole,
     takeFx: () => pendingFx.splice(0),
+    takeEmotes: () => pendingEmotes.splice(0),
     view,
   };
 
