@@ -8,6 +8,7 @@ import {
   type ItemSlotMessage,
   type UseItemMessage,
 } from "@troll-golf/shared";
+import { startTargetPicker } from "./targetPicker";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -18,14 +19,21 @@ const DENIED: Record<string, string> = {
   item_not_ready: "Still spinning…",
   wrong_phase: "Not right now",
   spectating: "Wait for the next Hole",
+  no_target: "Nobody can be targeted right now",
+  untargetable: "Can't hit them right now",
+  unknown_target: "Can't hit them",
 };
+
+/** Holding Space this long with an opponent Item opens the target picker instead of a tap. */
+const HOLD_MS = 220;
 
 /**
  * The item slot, bottom-centre. Only this Player's own Item is ever shown:
  * the server tells the holder alone. On a pickup it plays a 1.5 s
  * slot-machine roulette (display only: the server already decided), then
- * shows the Item. Tap Space or click the slot to use it.
- * Ticket 15 turns holding Space into the target picker.
+ * shows the Item. Tap Space or click the slot to use it (an opponent Item
+ * then hits the Leader, or the next-best Standing who can be targeted).
+ * Holding Space with an opponent Item opens the target picker while held.
  */
 export function startItemSlot(room: Room): void {
   const slot = $("item-slot");
@@ -35,6 +43,7 @@ export function startItemSlot(room: Room): void {
   let item: ItemId | null = null;
   let spinUntil = 0;
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
+  const picker = startTargetPicker(room);
 
   const show = (id: ItemId | null) => {
     icon.textContent = id ? ITEM_CATALOGUE[id].icon : "";
@@ -45,6 +54,7 @@ export function startItemSlot(room: Room): void {
   room.onMessage("item", (message: ItemSlotMessage) => {
     item = message.item;
     note.textContent = "";
+    if (!item) picker.close();
     if (!message.roulette || !item) {
       spinUntil = 0;
       slot.classList.remove("spinning");
@@ -97,12 +107,40 @@ export function startItemSlot(room: Room): void {
     room.send("useItem", {} satisfies UseItemMessage);
   };
   slot.addEventListener("click", use);
+  // Tap Space = use (targeted Items go to the Leader); hold Space = the target picker, open while held.
+  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  let pressed = false;
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || e.repeat) return;
+    if (e.code !== "Space") return;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
     if (slot.hidden) return; // the HUD isn't showing (lobby)
     e.preventDefault();
-    use();
+    if (e.repeat || pressed) return;
+    pressed = true;
+    if (!item || spinUntil) return;
+    if (ITEM_CATALOGUE[item].targeting !== "opponent") {
+      use();
+      return;
+    }
+    const held = item;
+    holdTimer = setTimeout(() => {
+      holdTimer = undefined;
+      if (item === held) picker.open(held);
+    }, HOLD_MS);
   });
+  const release = () => {
+    if (!pressed) return;
+    pressed = false;
+    if (holdTimer !== undefined) {
+      clearTimeout(holdTimer);
+      holdTimer = undefined;
+      use();
+    }
+    picker.close();
+  };
+  window.addEventListener("keyup", (e) => {
+    if (e.code === "Space") release();
+  });
+  window.addEventListener("blur", release);
 }

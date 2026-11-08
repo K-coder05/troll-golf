@@ -9,6 +9,8 @@ interface SyncedPlayer {
   connected: boolean;
   spectating: boolean;
   standing: number;
+  /** 0 until the game ends, then the final Item Hits. */
+  itemHits: number;
   strokes: ArrayLike<number> & { at(i: number): number | undefined };
 }
 interface SyncedState {
@@ -152,7 +154,7 @@ export function startHud(room: Room, hole: () => HoleMessage | null, view: HudVi
       setText(
         els.boardFooter,
         final
-          ? "Thanks for playing!"
+          ? "Lowest total wins · ties go to more Item Hits · thanks for playing!"
           : !between(state.phase)
             ? "Standing: total Strokes so far, closest to the Cup breaks ties"
             : state.holeIndex + 1 < holeCount
@@ -200,22 +202,27 @@ function scoreboardHtml(state: SyncedState, myId: string, final: boolean): strin
   const played = final ? state.pars.length : state.holeIndex + 1;
   const pars = Array.from({ length: played }, (_, i) => state.pars.at(i) ?? 0);
   const parTotal = pars.reduce((a, b) => a + b, 0);
-  const rows: { id: string; name: string; color: string; holes: number[]; total: number; standing: number }[] = [];
+  const rows: { id: string; name: string; color: string; holes: number[]; total: number; standing: number; hits: number }[] = [];
   state.players.forEach((p, id) => {
     const holes = pars.map((_, i) => p.strokes.at(i) ?? 0);
-    rows.push({ id, name: p.name, color: p.color, holes, total: holes.reduce((a, b) => a + b, 0), standing: p.standing });
+    rows.push({ id, name: p.name, color: p.color, holes, total: holes.reduce((a, b) => a + b, 0), standing: p.standing, hits: p.itemHits ?? 0 });
   });
   // Standing order: lowest total first, distance to the Cup breaking ties
-  // during a Hole. Equal totals share a place. Ticket 15 adds the Item Hits tiebreak.
+  // during a Hole. In the final results equal totals go to more Item Hits
+  // (the server ranks them; Item Hits are only revealed at the end).
   rows.sort((a, b) => a.standing - b.standing);
 
-  const head = `<tr><th></th><th>Player</th>${pars.map((_, i) => `<th>${i + 1}</th>`).join("")}<th>Total</th><th>±Par</th></tr>`;
-  const parRow = `<tr class="par"><td></td><td>Par</td>${pars.map((p) => `<td>${p}</td>`).join("")}<td>${parTotal}</td><td></td></tr>`;
+  const hitsHead = final ? "<th title=\"Item Hits: attack Items that landed. They break ties.\">Hits</th>" : "";
+  const head = `<tr><th></th><th>Player</th>${pars.map((_, i) => `<th>${i + 1}</th>`).join("")}<th>Total</th><th>±Par</th>${hitsHead}</tr>`;
+  const parRow = `<tr class="par"><td></td><td>Par</td>${pars.map((p) => `<td>${p}</td>`).join("")}<td>${parTotal}</td><td></td>${final ? "<td></td>" : ""}</tr>`;
   const body = rows
     .map((r, rank) => {
       const cells = r.holes.map((s, i) => `<td class="${s < pars[i]! ? "under" : s > pars[i]! ? "over" : ""}">${s}</td>`).join("");
-      const place = rank > 0 && r.total === rows[rank - 1]!.total ? "" : String(rank + 1);
-      return `<tr class="${r.id === myId ? "me" : ""}${final && rank === 0 ? " winner" : ""}"><td>${place}</td><td><span class="dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.name)}</td>${cells}<td><b>${r.total}</b></td><td>${vsPar(r.total - parTotal)}</td></tr>`;
+      const prev = rows[rank - 1];
+      const shared = !!prev && r.total === prev.total && (!final || r.hits === prev.hits);
+      const place = shared ? "" : String(rank + 1);
+      const hits = final ? `<td>${r.hits}</td>` : "";
+      return `<tr class="${r.id === myId ? "me" : ""}${final && rank === 0 ? " winner" : ""}"><td>${place}</td><td><span class="dot" style="background:${escapeHtml(r.color)}"></span>${escapeHtml(r.name)}</td>${cells}<td><b>${r.total}</b></td><td>${vsPar(r.total - parTotal)}</td>${hits}</tr>`;
     })
     .join("");
   return `<thead>${head}</thead><tbody>${parRow}${body}</tbody>`;

@@ -51,6 +51,10 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
       this.game.handleIntent(client.sessionId, { type: "useItem", targetId, point });
       this.flush();
     });
+    // Mashing out of a Freeze: the simulation ignores it unless an Effect reacts.
+    this.onMessage("mash", (client) => {
+      this.game.handleIntent(client.sessionId, { type: "mash" });
+    });
     // Lobby: the simulation checks that only the room creator may do these.
     this.onMessage("configure", (client, message: unknown) => {
       const { courseId } = (message ?? {}) as { courseId?: unknown };

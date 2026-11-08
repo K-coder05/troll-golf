@@ -60,8 +60,15 @@ const SOFT_PUTT = 0.45;
 const RIGHT = 0;
 const DOWN = Math.PI / 2;
 
+/**
+ * These tests are about the box and slot mechanics, so by default the only
+ * Item that exists is Mulligan (every box gives it). Freeze Ray and Shield
+ * have their own tests (effects.test.ts).
+ */
+const MULLIGAN_ONLY = { mulligan: ITEM_HANDLERS.mulligan };
+
 function playing(options: TestGameOptions, ...players: string[]): TestGame {
-  const t = new TestGame(options);
+  const t = new TestGame({ ...options, items: { handlers: MULLIGAN_ONLY, ...options.items } });
   for (const id of players) t.join(id, id[0]!.toUpperCase() + id.slice(1));
   t.startPlaying();
   t.drain();
@@ -224,7 +231,7 @@ describe("the draw", () => {
     expect(run()).toEqual(run());
   });
 
-  it("falls back to any available Item when the drawn category has none yet (placeholder until tickets 15-19)", () => {
+  it("falls back to any available Item when the drawn category has none (e.g. no chaos Item before ticket 19)", () => {
     const rng = createSeededRng(5);
     const onlyMulligan = (id: ItemId) => id === "mulligan";
     const categories = new Set<ItemCategory>();
@@ -438,7 +445,7 @@ describe("Players who have Holed Out", () => {
     // Data, not code: Mulligan's weight 0 means boxes never give it.
     items: {
       catalogue: { ...ITEM_CATALOGUE, mulligan: { ...ITEM_CATALOGUE.mulligan, weight: 0 } },
-      handlers: { ...ITEM_HANDLERS, shield },
+      handlers: { ...MULLIGAN_ONLY, shield },
     },
   };
 
@@ -469,7 +476,7 @@ describe("Item data", () => {
         course: lane(),
         items: {
           catalogue: { ...ITEM_CATALOGUE, mulligan: { ...ITEM_CATALOGUE.mulligan, weight: 0 } },
-          handlers: { ...ITEM_HANDLERS, shield },
+          handlers: { ...MULLIGAN_ONLY, shield },
         },
       },
       "maya",

@@ -59,7 +59,10 @@ export interface ItemDefinition {
   counters: string[];
   /** Relative chance within its category when a box picks one. 0 = never from a box (Give Item only). */
   weight: number;
-  /** Item-specific numbers (shots, ranges...), so tuning them stays data too. */
+  /**
+   * Item-specific numbers (shots, ranges...), so tuning them stays data too.
+   * Freeze Ray: `mashClicks` clicks of mashing take `mashSavesMs` off the Freeze.
+   */
   params: Record<string, number>;
 }
 
@@ -77,7 +80,7 @@ export const ITEM_CATALOGUE: ItemCatalogue = {
     disabling: true,
     counters: ["Shield", "mash click to break out 1 s sooner"],
     weight: 3,
-    params: { mashSavesMs: 1000 },
+    params: { mashSavesMs: 1000, mashClicks: 10 },
   },
   golfGun: {
     id: "golfGun",

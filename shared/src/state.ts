@@ -7,6 +7,7 @@
  * inside the simulation and never reaches this type.
  */
 
+import type { EffectState } from "./effects";
 import type { TerrainEdit } from "./terrain";
 
 export type Phase = "lobby" | "countdown" | "playing" | "holeEnd" | "gameEnd";
@@ -66,6 +67,22 @@ export interface PlayerState {
    * to whoever joined first. Recomputed every simulation step.
    */
   standing: number;
+  /**
+   * The Player's visible active Effects (Frozen, Shielded...), for the ball
+   * badges. Never says who caused them. Hidden Effects stay server-only.
+   */
+  effects: EffectState[];
+  /**
+   * Clock time (ms) until which attack Items can't hit this Player: the 3 s
+   * immunity window after an attack lands. 0 = never hit.
+   */
+  immuneUntil: number;
+  /**
+   * The Player's Item Hits (attack Items that landed on an opponent). Kept
+   * server-only during play: 0 until the game ends, then the final count,
+   * which breaks ties in the final results.
+   */
+  itemHits: number;
 }
 
 /**

@@ -8,3 +8,4 @@ export * from "./obstacles";
 export * from "./admin";
 export * from "./terrain";
 export * from "./items";
+export * from "./effects";

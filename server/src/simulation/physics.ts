@@ -216,6 +216,27 @@ export class PhysicsWorld {
     this.setVelocity(id, { x: 0, y: 0 });
   }
 
+  /**
+   * Pin a ball where it is (Freeze): it becomes a static block that stops
+   * dead, ignores pushes and that other balls bounce off. Unpinning makes it
+   * an ordinary rolling ball again, at rest.
+   */
+  setPinned(id: string, pinned: boolean): void {
+    const body = this.body(id);
+    if (pinned === body.isStatic()) return;
+    if (pinned) {
+      body.setStatic();
+    } else {
+      body.setDynamic();
+      body.setLinearVelocity({ x: 0, y: 0 });
+      body.setAwake(true);
+    }
+  }
+
+  isPinned(id: string): boolean {
+    return this.balls.get(id)?.isStatic() ?? false;
+  }
+
   setCollisions(id: string, collisions: BallCollisions): void {
     for (let f: Fixture | null = this.body(id).getFixtureList(); f; f = f.getNext()) {
       f.setFilterData({ groupIndex: 0, categoryBits: CATEGORY.ball, maskBits: maskFor(collisions) });

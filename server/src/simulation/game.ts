@@ -35,6 +35,8 @@ import {
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
+import { EFFECT_DEFINITIONS } from "./effectKinds";
+import { createEffectSystem, type EffectLogEntry } from "./effects";
 import { ITEM_HANDLERS } from "./itemHandlers";
 import { createItemSystem, type ItemBallControl, type ItemHandlerRegistry, type ItemLogEntry } from "./items";
 import { PHYSICS_STEP_MS, PhysicsWorld } from "./physics";
@@ -143,6 +145,8 @@ export interface Game {
   getItemLog(): readonly ItemLogEntry[];
   /** The Item a Player holds, or null. Server-only: held Items are private (ticket 20's x-ray). */
   getHeldItem(playerId: string): ItemId | null;
+  /** Every Effect start and end so far, with sources. Server-only, never synced (ticket 23's Recap, 20's x-ray). */
+  getEffectLog(): readonly EffectLogEntry[];
 }
 
 /**
@@ -151,16 +155,6 @@ export interface Game {
  */
 export function unfinishedScore(strokes: number, par: number, strokeCapOverPar: number): number {
   return Math.min(strokes + UNFINISHED_PENALTY, par + strokeCapOverPar);
-}
-
-/**
- * Whether Items (ticket 15) may target this Player right now. A Player who
- * has Holed Out, is disconnected, or is a late joiner waiting for the next
- * Hole has no ball in play and can't be hit. Ticket 15 adds the 3 s immunity
- * window and the disabling-Effect cap on top of this.
- */
-export function isTargetable(player: Readonly<PlayerState>): boolean {
-  return player.connected && !player.holedOut && !player.spectating;
 }
 
 /**
@@ -260,6 +254,24 @@ export function createGame(options: CreateGameOptions): Game {
     cup: cupControl(),
     terrain: terrainControl(),
   });
+  // The Effects engine: Frozen, Shielded..., immunity windows. Visible Effects are mirrored into PlayerState.effects.
+  const effects = createEffectSystem({
+    state,
+    clock,
+    emit,
+    registry: EFFECT_DEFINITIONS,
+    balls: {
+      pin(playerId, pinned) {
+        if (!physics.hasBall(playerId)) return;
+        physics.setPinned(playerId, pinned);
+        const ball = state.players[playerId]?.ball;
+        if (pinned && ball) {
+          ball.vx = 0;
+          ball.vy = 0;
+        }
+      },
+    },
+  });
   // Item Boxes, the draw, held Items and their use. Held Items are server-only (private to their holder).
   const items = createItemSystem({
     state,
@@ -271,6 +283,7 @@ export function createGame(options: CreateGameOptions): Game {
     tuning: options.items?.tuning ?? ITEM_TUNING,
     handlers: options.items?.handlers ?? ITEM_HANDLERS,
     balls: itemBallControl(),
+    effects,
   });
   items.setupHole(firstHole);
 
@@ -777,22 +790,28 @@ export function createGame(options: CreateGameOptions): Game {
    * (penalties included), fewest first, with distance to the Cup breaking
    * ties. A Holed-Out Player's distance is 0, so they rank by their final
    * Strokes. Remaining ties go to whoever joined first. The Leader is first
-   * in Standing among Players who haven't Holed Out.
+   * in Standing among Players who haven't Holed Out. In the final results
+   * (gameEnd) distance no longer counts: equal totals go to more Item Hits.
    */
   function updateStandings(): void {
     const cup = state.cup;
+    // Final results: equal totals go to more Item Hits (revealed in PlayerState.itemHits at the end).
+    const final = state.phase === "gameEnd";
     const ranked = Object.values(state.players)
       .map((p) => ({
         player: p,
         total: p.strokes.reduce((a, b) => a + b, 0),
-        distance: p.holedOut
+        distance: final
           ? 0
-          : p.spectating
-            ? NOT_ON_COURSE_DISTANCE
-            : Math.hypot(p.ball.x - cup.x, p.ball.y - cup.y),
+          : p.holedOut
+            ? 0
+            : p.spectating
+              ? NOT_ON_COURSE_DISTANCE
+              : Math.hypot(p.ball.x - cup.x, p.ball.y - cup.y),
+        hits: final ? p.itemHits : 0,
         order: joinOrder.get(p.id) ?? 0,
       }))
-      .sort((a, b) => a.total - b.total || a.distance - b.distance || a.order - b.order);
+      .sort((a, b) => a.total - b.total || b.hits - a.hits || a.distance - b.distance || a.order - b.order);
     ranked.forEach((r, i) => (r.player.standing = i + 1));
     state.leaderId = ranked.find((r) => !r.player.holedOut && !r.player.spectating)?.player.id ?? "";
   }
@@ -810,6 +829,7 @@ export function createGame(options: CreateGameOptions): Game {
     state.holeIndex = index;
     held = null;
     nuke = null;
+    effects.clearAll();
     const hole = currentHole();
     resetTerrain();
     physics = newPhysicsWorld();
@@ -849,6 +869,8 @@ export function createGame(options: CreateGameOptions): Game {
     const cap = par + state.settings.strokeCapOverPar;
     dropHeld();
     cancelNuke();
+    // Effects don't outlive their Hole (a Freeze thaws, a Shield pops quietly).
+    effects.clearAll();
     for (const player of Object.values(state.players)) {
       if (player.holedOut || player.spectating) continue;
       if (physics.hasBall(player.id)) physics.stop(player.id);
@@ -867,6 +889,8 @@ export function createGame(options: CreateGameOptions): Game {
   }
 
   function endGame(): void {
+    // Item Hits were server-only during play; now they break ties in the final results.
+    for (const player of Object.values(state.players)) player.itemHits = items.itemHits(player.id);
     state.phase = "gameEnd";
     state.phaseEndsAt = 0;
     state.holeEndsAt = 0;
@@ -909,7 +933,10 @@ export function createGame(options: CreateGameOptions): Game {
   function start(playerId: string): IntentResult {
     const allowed = checkCreator(playerId);
     if (!allowed.ok) return allowed;
-    for (const player of Object.values(state.players)) player.strokes = course.holes.map(() => 0);
+    for (const player of Object.values(state.players)) {
+      player.strokes = course.holes.map(() => 0);
+      player.itemHits = 0;
+    }
     items.resetAll();
     startHole(0);
     return { ok: true };
@@ -938,6 +965,7 @@ export function createGame(options: CreateGameOptions): Game {
     pendingLipOut.clear();
     poppedOut.clear();
     lastShots.clear();
+    effects.clearAll();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
     items.setupHole(hole);
@@ -989,6 +1017,9 @@ export function createGame(options: CreateGameOptions): Game {
       strokes: course.holes.map((h, i) => (late && i <= missedThrough ? h.par + cap : 0)),
       holedOut: false,
       standing: 0,
+      effects: [],
+      immuneUntil: 0,
+      itemHits: 0,
     };
     joinOrder.set(playerId, joinCount);
     joinCount++;
@@ -1058,6 +1089,7 @@ export function createGame(options: CreateGameOptions): Game {
       physics.removeBall(playerId);
       forgetBall(playerId);
       items.forget(playerId);
+      effects.forget(playerId);
       lastShots.delete(playerId);
     } else {
       player.connected = false;
@@ -1089,7 +1121,10 @@ export function createGame(options: CreateGameOptions): Game {
     if (!player.connected) return { ok: false, reason: "not_connected" };
     if (player.spectating) return { ok: false, reason: "spectating" };
     if (player.holedOut) return { ok: false, reason: "holed_out" };
-    // Freeze (15) adds its check here. A ball held by the Admin reads as moving.
+    // Effects that stop shooting (Freeze).
+    const blocked = effects.shotBlocker(playerId);
+    if (blocked) return { ok: false, reason: blocked };
+    // A ball held by the Admin reads as moving.
     if (held?.id === playerId || !player.ball.atRest) return { ok: false, reason: "ball_moving" };
 
     lastShots.set(playerId, { from: { x: player.ball.x, y: player.ball.y }, penalties: 0 });
@@ -1103,6 +1138,14 @@ export function createGame(options: CreateGameOptions): Game {
     slowSteps.set(playerId, 0);
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
     return { ok: true };
+  }
+
+  /** One mash click: Effects that react to it (Freeze: break out sooner). Only while playing. */
+  function mash(playerId: string): IntentResult {
+    const player = state.players[playerId];
+    if (!player) return { ok: false, reason: "unknown_player" };
+    if (state.phase !== "playing") return { ok: false, reason: "wrong_phase" };
+    return effects.mash(playerId) ? { ok: true } : { ok: false, reason: "no_effect" };
   }
 
   /**
@@ -1259,6 +1302,8 @@ export function createGame(options: CreateGameOptions): Game {
     for (const [id, player] of Object.entries(state.players)) {
       if (physics.hasBall(id)) startedAt.set(id, { x: player.ball.x, y: player.ball.y });
     }
+    // Effects act before the world moves (a Frozen ball is pinned before anything can hit it).
+    effects.step();
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
     state.obstacleTimeMs = physics.obstacleTimeMs;
@@ -1274,14 +1319,16 @@ export function createGame(options: CreateGameOptions): Game {
 
       // Item Boxes are sensors: passing through one never changes the ball's path.
       items.rollThrough(player, startedAt.get(id) ?? motion, motion);
-      if (!ball.atRest && checkCup(player)) continue;
+      // A pinned (Frozen) ball is a block of ice: it can't drop into the Cup or ride pads and Teleporters.
+      const pinned = physics.isPinned(id);
+      if (!ball.atRest && !pinned && checkCup(player)) continue;
       // Resting balls too: Terrain Paint can put Water or Void under a ball that isn't moving.
       // It sinks like any other (the return spot is always dry, so it can't sink again where it lands).
       if (isHazard(surfaces.at(ball))) {
         sinkBall(player, motion);
         continue;
       }
-      if (!ball.atRest) applyPadsAndPortals(id, ball);
+      if (!ball.atRest && !pinned) applyPadsAndPortals(id, ball);
       const speed = Math.hypot(ball.vx, ball.vy);
 
       if (ball.atRest) {
@@ -1327,6 +1374,8 @@ export function createGame(options: CreateGameOptions): Game {
           return shoot(playerId, intent.angle, intent.power);
         case "useItem":
           return items.use(playerId, intent);
+        case "mash":
+          return mash(playerId);
         case "admin":
           return admin.use(playerId, intent);
         default:
@@ -1348,6 +1397,7 @@ export function createGame(options: CreateGameOptions): Game {
       if (state.phase === "playing") {
         expireTerrain();
         items.respawnBoxes();
+        effects.expire();
       }
       advancePhase();
       updateStandings();
@@ -1371,6 +1421,9 @@ export function createGame(options: CreateGameOptions): Game {
     },
     getHeldItem(playerId) {
       return items.held(playerId);
+    },
+    getEffectLog() {
+      return effects.log;
     },
   };
 }

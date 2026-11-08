@@ -40,6 +40,9 @@ export interface ConfigureMessage {
   courseId?: string;
 }
 
+/** A mash click while Frozen (no payload). */
+export type MashMessage = Record<string, never>;
+
 /** Start the game from the lobby. Room creator only. */
 export type StartMessage = Record<string, never>;
 
@@ -49,6 +52,8 @@ export interface ClientMessages {
   start: StartMessage;
   /** Use the held Item. */
   useItem: UseItemMessage;
+  /** One click of mashing to break out of a Freeze sooner. Ignored when not Frozen. */
+  mash: MashMessage;
   /** Use an Admin Power (the Admin's session only). */
   admin: AdminMessage;
 }
@@ -81,6 +86,8 @@ export interface HoleMessage {
  * `nukeAbort`: the Hole ended before the Nuke went off; stop the siren.
  * `itemBox`: an Item Box shattered at (x, y) (it never says what was inside).
  * `itemUse`: `item` was used at (x, y); the client's renderer for that Item plays it.
+ * `shieldPop`: a Shield absorbed an attack at (x, y) (the ball's spot).
+ * `thaw`: a Freeze ended at (x, y): the ice cracks.
  */
 export interface FxMessage {
   kind:
@@ -95,11 +102,15 @@ export interface FxMessage {
     | "nukeBlast"
     | "nukeAbort"
     | "itemBox"
-    | "itemUse";
+    | "itemUse"
+    | "shieldPop"
+    | "thaw";
   x: number;
   y: number;
-  /** `itemUse` only: which Item. */
+  /** `itemUse` and `shieldPop`: which Item. */
   item?: ItemId;
+  /** `itemUse` of a targeted Item, `shieldPop`, `thaw`: whose ball. */
+  targetId?: string;
 }
 
 /**

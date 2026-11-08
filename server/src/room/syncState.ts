@@ -1,5 +1,5 @@
 import type { RoomState } from "@troll-golf/shared";
-import { ItemBoxSchema, PlayerSchema, PointSchema, TerrainEditSchema, type RoomStateSchema } from "./schema";
+import { EffectSchema, ItemBoxSchema, PlayerSchema, PointSchema, TerrainEditSchema, type RoomStateSchema } from "./schema";
 
 /**
  * Copies the simulation's public state into the synced schema. Colyseus only
@@ -50,10 +50,31 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
     synced.holedOut = player.holedOut;
     synced.standing = player.standing;
     syncNumbers(synced.strokes, player.strokes);
+    synced.immuneUntil = player.immuneUntil;
+    synced.itemHits = player.itemHits;
+    syncEffects(synced.effects, player.effects);
   }
 
   syncTerrain(target.terrainEdits, source.terrainEdits);
   syncItemBoxes(target.itemBoxes, source.itemBoxes);
+}
+
+/** A Player's visible Effects: few and short-lived, so rebuild from the first id that differs. */
+function syncEffects(target: PlayerSchema["effects"], source: Readonly<RoomState>["players"][string]["effects"]): void {
+  let same = 0;
+  while (same < target.length && same < source.length && target[same]!.id === source[same]!.id) same++;
+  while (target.length > same) target.pop();
+  source.forEach((effect, i) => {
+    let synced = target[i];
+    if (!synced) {
+      synced = new EffectSchema();
+      synced.id = effect.id;
+      synced.kind = effect.kind;
+      synced.startedAt = effect.startedAt;
+      target.push(synced);
+    }
+    synced.endsAt = effect.endsAt;
+  });
 }
 
 /** A Hole's boxes are a fixed list (rebuilt per Hole), so update in place and resize. Held Items are never synced. */

@@ -148,6 +148,36 @@
       #item-slot.empty #item-icon::after { content: "?"; font-size: 28px; opacity: 0.3; }
       @keyframes item-land { 50% { transform: translateX(-50%) scale(1.2); } }
       @keyframes item-shake { 25% { transform: translateX(calc(-50% - 6px)); } 75% { transform: translateX(calc(-50% + 6px)); } }
+      #kill-feed {
+        position: fixed; top: 220px; right: 12px; max-width: 45%; display: grid; gap: 4px; justify-items: end;
+        pointer-events: none; z-index: 4;
+      }
+      #kill-feed .line {
+        padding: 3px 10px; border-radius: 6px; background: rgba(0,0,0,0.55); font-size: 13px; font-weight: 600;
+        text-shadow: 0 1px 2px #000; animation: feed-in 0.25s ease-out; transition: opacity 0.6s;
+      }
+      #kill-feed .line.hit { border-left: 3px solid #7fd8ff; }
+      #kill-feed .line.block { border-left: 3px solid #b48cff; }
+      #kill-feed .line.fade { opacity: 0; }
+      @keyframes feed-in { from { transform: translateX(30px); opacity: 0; } }
+      #target-picker {
+        position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); z-index: 6; min-width: 220px;
+        padding: 8px 12px; border-radius: 8px; background: rgba(0,0,0,0.75); border: 2px solid var(--accent); font-size: 14px;
+      }
+      #target-picker h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+      #target-picker button {
+        display: flex; gap: 8px; align-items: center; width: 100%; margin: 2px 0; padding: 4px 8px; border-radius: 6px;
+        border: 0; background: rgba(255,255,255,0.08); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+      }
+      #target-picker button:disabled { opacity: 0.35; cursor: default; }
+      #target-picker button .key { font-weight: 700; color: var(--accent); width: 1em; }
+      #target-picker button .why { margin-left: auto; font-size: 11px; color: var(--muted); }
+      #target-picker .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+      #frozen-hint {
+        position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5;
+        padding: 6px 14px; border-radius: 6px; background: rgba(40,110,160,0.85); font-weight: 700; white-space: nowrap;
+      }
+      @media (max-width: 600px) { #kill-feed { top: 64px; } }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -194,7 +224,7 @@
     <div id="hud" hidden>
       <div id="hole-info"></div>
       <div class="hint">Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
-      <div class="hint">Drag back from your ball and release to shoot · Space uses your Item · hold Tab to see the whole Hole and the scoreboard</div>
+      <div class="hint">Drag back from your ball and release to shoot · tap Space to use your Item (attacks hit the Leader), hold Space to pick a target · hold Tab to see the whole Hole and the scoreboard</div>
     </div>
     <div id="timer" hidden></div>
     <div id="standings" hidden><table id="standings-table"></table></div>
@@ -202,6 +232,9 @@
     <div id="item-slot" class="empty" role="button" title="Use your Item (Space)" hidden>
       <div id="item-icon"></div><div id="item-name"></div><div id="item-note"></div>
     </div>
+    <div id="kill-feed"></div>
+    <div id="target-picker" hidden><h3>Pick a target: click a ball or press 1–8</h3><div id="target-list"></div></div>
+    <div id="frozen-hint" hidden>🧊 Frozen! Mash click to break free</div>
     <div id="connection" hidden>Connection lost · reconnecting…</div>
     <div id="banner" hidden></div>
     <div id="gods-banner" hidden><div id="gods-text"></div><div id="gods-detail"></div></div>

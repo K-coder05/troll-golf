@@ -77,6 +77,13 @@ _Avoid_: Power-up hit, kill
 An ongoing state on a Player or their ball, such as Frozen, Shielded or Inked, caused by an Item or an Admin Power.
 _Avoid_: Buff, debuff, status
 
+**Immunity window**:
+The 3 s after an attack Item lands on a Player, during which no attack Item can hit them. A Shield block doesn't start one. Admin Powers ignore it.
+_Avoid_: Cooldown, invulnerability
+
+**Disabling Effect**:
+An Effect that takes control away (Frozen, Inked). A Player is under at most one at a time.
+
 ## Admin Powers
 
 **Admin Power**:

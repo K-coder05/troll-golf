@@ -15,6 +15,7 @@ import {
   type Vec2,
 } from "@troll-golf/shared";
 import type { Clock } from "./clock";
+import { isTargetable, type EffectSystem } from "./effects";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { IntentRejection, IntentResult } from "./intents";
 import type { Rng } from "./random";
@@ -28,8 +29,14 @@ import type { Rng } from "./random";
  *     -> Item drawn now (category by Standing row, then Item by weight)
  *     -> held, private: `item` message to the holder only (roulette)
  *
- *   useItem intent -> holds an Item? playing? roulette over? -> handler.use()
- *     -> slot emptied (unless the handler keeps it) -> log entry
+ *   useItem intent -> holds an Item? playing? roulette over?
+ *     -> opponent Items: resolve the target (picked, else the best Standing
+ *        that can be targeted; nobody -> refused, Item kept)
+ *     -> handler.use() -> slot emptied (unless the handler keeps it) -> log entry
+ *
+ *   An attack reaches its target only through applyItemHit, the one place
+ *   that checks targetability, immunity, the disabling cap and Shields (and,
+ *   ticket 20, God Mode), grants the 3 s immunity and counts the Item Hit.
  *
  * Each Item is one ItemHandler registered in ITEM_HANDLERS
  * (server/src/simulation/itemHandlers/), mirroring the Admin Power registry.
@@ -65,11 +72,27 @@ export interface ItemUseRequest {
   point?: Vec2;
 }
 
+/**
+ * What happened to an attack:
+ * - landed: it took effect; the target is immune for 3 s and the attacker got an Item Hit;
+ * - blocked: a Shield ate it (used up; no Item Hit, no immunity);
+ * - missed: the target can't be hit right now (nothing happened).
+ */
+export type ItemHitResult =
+  | { result: "landed" }
+  | { result: "blocked"; by: "shield" }
+  | { result: "missed"; reason: IntentRejection };
+
 export interface ItemContext {
   /** The live room state, mutable. */
   readonly state: RoomState;
   /** The Player using the Item. */
   readonly user: PlayerState;
+  /**
+   * Opponent-targeted Items: the resolved target (the picked one, or on a
+   * tap the best Standing who can be targeted). Undefined for other kinds.
+   */
+  readonly target?: PlayerState;
   /** The Item's data (duration, params...). */
   readonly def: ItemDefinition;
   readonly request: ItemUseRequest;
@@ -79,6 +102,16 @@ export interface ItemContext {
   /** Recompute Standing and the Leader after scores or positions change. */
   updateStandings(): void;
   readonly balls: ItemBallControl;
+  /** The Effects engine (start Effects, look up Shields...). */
+  readonly effects: EffectSystem;
+  /**
+   * Attack `targetId` with this Item: applyItemHit for the user. `land` is
+   * called only if the attack gets through, and does what the Item does
+   * (start an Effect, push the ball...) plus its own feed line.
+   */
+  hit(targetId: string, land: () => void): ItemHitResult;
+  /** Opponents this Item may target right now, best Standing first (Swap picks from these). */
+  targets(): PlayerState[];
 }
 
 export type ItemUseOutcome =
@@ -136,6 +169,25 @@ export type ItemLogEntry =
       category: ItemCategory;
       targetId?: string;
       summary: string;
+    }
+  | {
+      /** An attack Item landed: an Item Hit for `playerId` (the attacker), taken by `targetId`. */
+      kind: "hit";
+      at: number;
+      holeIndex: number;
+      playerId: string;
+      targetId: string;
+      item: ItemId;
+    }
+  | {
+      /** An attack was blocked (a Shield ate it). Not an Item Hit. */
+      kind: "blocked";
+      at: number;
+      holeIndex: number;
+      playerId: string;
+      targetId: string;
+      item: ItemId;
+      by: "shield";
     };
 
 // ---- The draw ----------------------------------------------------------------
@@ -175,10 +227,10 @@ function drawWeighted(rng: Rng, items: readonly ItemDefinition[]): ItemId {
  * category by weight. Only Items that can come from a box take part: those
  * with a handler (`available`) and a weight above 0.
  *
- * Placeholder until tickets 15-19 fill the catalogue: if the drawn category
- * has no such Item yet, the Item is drawn by weight from every available
- * Item instead (today that is always Mulligan). The returned `category` is
- * still the drawn one, so the odds can be checked and logged.
+ * If the drawn category has no such Item (today: chaos, until Swap in
+ * ticket 19), the Item is drawn by weight from every available Item instead
+ * (Freeze Ray, Shield or Mulligan). The returned `category` is still the
+ * drawn one, so the odds can be checked and logged.
  * Returns null if no Item at all can come from a box.
  */
 export function drawItem(
@@ -223,6 +275,7 @@ export interface ItemSystemOptions {
   tuning: ItemTuning;
   handlers: ItemHandlerRegistry;
   balls: ItemBallControl;
+  effects: EffectSystem;
 }
 
 export interface ItemSystem {
@@ -238,6 +291,21 @@ export interface ItemSystem {
    */
   rollThrough(player: PlayerState, from: Vec2, to: Vec2): void;
   use(playerId: string, request: { targetId?: unknown; point?: unknown }): IntentResult;
+  /**
+   * The single path for an attack Item reaching an opponent, for use
+   * handlers (through ItemContext.hit) and for Items that hit later (Banana
+   * Mine, ticket 18). In order: the target must be targetable for this Item
+   * (in play, not immune, not already disabled if the Item is disabling);
+   * (ticket 20: God Mode blocks it here, looking like a Shield pop); a
+   * Shield eats it (fx `shieldPop`, feed line); otherwise `land()` runs, the
+   * target becomes immune for 3 s and the attacker gets an Item Hit. Every
+   * hit and block is logged. Admin Powers never come through here.
+   */
+  applyItemHit(attackerId: string, targetId: string, item: ItemId, land: () => void): ItemHitResult;
+  /** Whether `target` can be attacked with `item` right now. */
+  canTarget(target: PlayerState, item: ItemId): boolean;
+  /** A Player's Item Hits this game. Server-only until the game ends. */
+  itemHits(playerId: string): number;
   /** What the Player holds, or null. Server-only (ticket 20's x-ray reads it). */
   held(playerId: string): ItemId | null;
   /** Put an Item in the slot, replacing any (Give Item, ticket 20). No roulette. */
@@ -248,7 +316,7 @@ export interface ItemSystem {
   sendSlot(playerId: string): void;
   /** The Player is gone from the room (lobby leave). */
   forget(playerId: string): void;
-  /** A new game: every slot empty, no rigs. */
+  /** A new game: every slot empty, no rigs, no Item Hits. */
   resetAll(): void;
   readonly log: readonly ItemLogEntry[];
 }
@@ -261,6 +329,9 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
   // Rig the Box: the Item each Player's next box gives. Server-only.
   const rigged = new Map<string, ItemId>();
   const log: ItemLogEntry[] = [];
+  // Item Hits per attacker this game. Server-only until the game ends (then copied into PlayerState.itemHits).
+  const hits = new Map<string, number>();
+  const { effects } = options;
 
   const available = (id: ItemId) => handlers[id] !== undefined;
 
@@ -310,10 +381,64 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     return { ok: false, reason };
   }
 
+  function canTarget(target: PlayerState, item: ItemId): boolean {
+    const { disabling } = catalogue[item];
+    if (!isTargetable(target, { now: clock.now(), disabling })) return false;
+    // Hidden disabling Effects count too.
+    return !(disabling && effects.isDisabled(target.id));
+  }
+
+  /** Opponents `item` may target right now, best Standing first. */
+  function targetsFor(userId: string, item: ItemId): PlayerState[] {
+    return Object.values(state.players)
+      .filter((p) => p.id !== userId && canTarget(p, item))
+      .sort((a, b) => a.standing - b.standing);
+  }
+
+  /**
+   * An opponent Item's target: the one picked (it must be an opponent who can
+   * be targeted now), or on a tap the Leader, skipping to the next-best
+   * Standing whenever the better one can't be targeted.
+   */
+  function resolveTarget(user: PlayerState, item: ItemId, picked: string | undefined): PlayerState | IntentRejection {
+    if (picked !== undefined) {
+      const target = state.players[picked];
+      if (!target || picked === user.id) return "unknown_target";
+      return canTarget(target, item) ? target : "untargetable";
+    }
+    return targetsFor(user.id, item)[0] ?? "no_target";
+  }
+
+  function applyItemHit(attackerId: string, targetId: string, item: ItemId, land: () => void): ItemHitResult {
+    const target = state.players[targetId];
+    const attacker = state.players[attackerId];
+    if (!target || !attacker || targetId === attackerId) return { result: "missed", reason: "unknown_target" };
+    if (!canTarget(target, item)) return { result: "missed", reason: "untargetable" };
+    const now = clock.now();
+    const def = catalogue[item];
+    // Ticket 20: God Mode blocks here, with exactly the events of a Shield pop in Stealth.
+    const shield = effects.find(targetId, "shielded");
+    if (shield) {
+      effects.end(shield.id, "consumed");
+      emit({ type: "fx", payload: { kind: "shieldPop", x: target.ball.x, y: target.ball.y, item, targetId }, audience: everyone });
+      emit({ type: "feed", payload: { text: `${target.name}'s Shield ate a ${def.name}` }, audience: everyone });
+      log.push({ kind: "blocked", at: now, holeIndex: state.holeIndex, playerId: attackerId, targetId, item, by: "shield" });
+      return { result: "blocked", by: "shield" };
+    }
+    land();
+    effects.grantImmunity(targetId);
+    hits.set(attackerId, (hits.get(attackerId) ?? 0) + 1);
+    log.push({ kind: "hit", at: now, holeIndex: state.holeIndex, playerId: attackerId, targetId, item });
+    return { result: "landed" };
+  }
+
   return {
     get log() {
       return log;
     },
+    applyItemHit,
+    canTarget,
+    itemHits: (playerId) => hits.get(playerId) ?? 0,
     setupHole(hole) {
       const points = state.settings.itemsEnabled ? chooseBoxSpawns(hole.itemBoxes, tuning.boxCountScale, rng) : [];
       state.itemBoxes = points.map((p, id) => ({ id, x: p.x, y: p.y, active: true, respawnAt: 0 }));
@@ -349,16 +474,26 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
       if (!handler) return deny(playerId, slot.item, "item_unavailable");
 
       const def = catalogue[slot.item];
+      let target: PlayerState | undefined;
+      if (def.targeting === "opponent") {
+        const resolved = resolveTarget(user, def.id, request.targetId);
+        if (typeof resolved === "string") return deny(playerId, slot.item, resolved);
+        target = resolved;
+      }
       const outcome = handler.use({
         state,
         user,
         def,
         request,
+        ...(target ? { target } : {}),
         now: () => clock.now(),
         rng,
         emit,
         updateStandings: options.updateStandings,
         balls: options.balls,
+        effects,
+        hit: (targetId, land) => applyItemHit(playerId, targetId, def.id, land),
+        targets: () => targetsFor(playerId, def.id),
       });
       if (!outcome.ok) return deny(playerId, slot.item, outcome.reason);
       if (!outcome.keep) {
@@ -395,6 +530,7 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
       const holders = [...slots.keys()];
       slots.clear();
       rigged.clear();
+      hits.clear();
       for (const id of holders) sendSlot(id);
     },
   };

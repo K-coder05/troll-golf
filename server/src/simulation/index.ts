@@ -10,7 +10,6 @@ export {
   SCOREBOARD_MS,
   CUP_CAPTURE_SPEED,
   unfinishedScore,
-  isTargetable,
   type Game,
   type CreateGameOptions,
 } from "./game";
@@ -33,11 +32,25 @@ export {
   type ItemContext,
   type ItemHandler,
   type ItemHandlerRegistry,
+  type ItemHitResult,
   type ItemLogEntry,
   type ItemUseOutcome,
   type ItemUseRequest,
 } from "./items";
 export { ITEM_HANDLERS } from "./itemHandlers";
+export {
+  createEffectSystem,
+  isTargetable,
+  type ActiveEffect,
+  type EffectDefinition,
+  type EffectEndReason,
+  type EffectHookContext,
+  type EffectLogEntry,
+  type EffectRegistry,
+  type EffectStartOptions,
+  type EffectSystem,
+} from "./effects";
+export { EFFECT_DEFINITIONS } from "./effectKinds";
 export { everyone, toPlayer, toAdmin, type Audience, type GameEvent } from "./events";
 export { createSeededRng, mathRandomRng, type Rng } from "./random";
 export { ManualClock, systemClock, type Clock } from "./clock";

@@ -34,6 +34,8 @@ export type Intent =
    * (aimed and placed Items) are validated by the Item pipeline (items.ts).
    */
   | { type: "useItem"; targetId?: unknown; point?: unknown }
+  /** One mash click (break out of a Freeze sooner). */
+  | { type: "mash" }
   /**
    * Use an Admin Power. Untrusted: the simulation checks that the sender is
    * the Admin and validates power, mode and params (see admin.ts).
@@ -90,6 +92,18 @@ export type IntentRejection =
   /** The held Item has no use handler yet (only possible through Give Item before tickets 15-19). */
   | "item_unavailable"
   /** Mulligan with no shot to take back on this Hole. */
-  | "no_shot";
+  | "no_shot"
+  /** A shot while Frozen. */
+  | "frozen"
+  /** A targeted Item with nobody who can be targeted right now (the Item is kept). */
+  | "no_target"
+  /**
+   * The chosen target can't be hit right now: Holed Out, disconnected, a
+   * waiting late joiner, inside their immunity window, or (for disabling
+   * Items) already disabled. The Item is kept.
+   */
+  | "untargetable"
+  /** A mash with no Effect that reacts to it. */
+  | "no_effect";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

@@ -25,6 +25,18 @@ export const BallSchema = schema(
   "Ball",
 );
 
+/** One visible active Effect (see EffectState in @troll-golf/shared). Never names its source. */
+export const EffectSchema = schema(
+  {
+    id: t.number(),
+    kind: t.string(),
+    startedAt: t.number(),
+    endsAt: t.number(),
+  },
+  "Effect",
+);
+export type EffectSchema = SchemaType<typeof EffectSchema>;
+
 export const PlayerSchema = schema(
   {
     id: t.string(),
@@ -36,6 +48,9 @@ export const PlayerSchema = schema(
     strokes: t.array("number"),
     holedOut: t.boolean(),
     standing: t.number(),
+    effects: t.array(EffectSchema),
+    immuneUntil: t.number(),
+    itemHits: t.number(),
   },
   "Player",
 );

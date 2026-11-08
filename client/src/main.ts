@@ -17,6 +17,7 @@ import { createRoom, forgetSeat, joinRoom, rejoinRoom, rememberSeat, serverResou
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 import { startHud, type HudView } from "./ui/hud";
 import { startItemSlot } from "./ui/itemSlot";
+import { startKillFeed } from "./ui/killFeed";
 import { startLobby } from "./ui/lobby";
 
 // The Hole scene, once it's up; the admin bundle asks it for world coordinates and hit-tests.
@@ -163,6 +164,7 @@ function enterRoom(room: Room): void {
   const view: HudView = { spectating: "" };
   startHud(room, () => hole, view);
   startItemSlot(room);
+  startKillFeed(room);
   startLobby(room, {
     courses: () => courses,
     // The lobby screen covers the game until the room creator starts it.

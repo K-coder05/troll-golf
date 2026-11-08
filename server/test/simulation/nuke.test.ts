@@ -2,6 +2,7 @@ import { NUKE_BLAST_MS, NUKE_SIREN_MS } from "@troll-golf/shared";
 import { describe, expect, it } from "vitest";
 import { sampleCourse } from "../../src/courses";
 import { placeholderCourse } from "../../src/courses/placeholder";
+import { ITEM_HANDLERS } from "../../src/simulation";
 import { TestGame } from "../harness";
 
 /** Placeholder Course: Tee (160, 320), Cup (800, 320) r12. Maya is the Admin. */
@@ -210,7 +211,7 @@ describe("Nuke", () => {
   it("held Items survive both Wipe and Reset", () => {
     // The Practice Box with an Item Box just right of Ben's Tee slot (160, 300).
     const course = { ...placeholderCourse, holes: [{ ...placeholderCourse.holes[0]!, itemBoxes: [{ x: 230, y: 300 }] }] };
-    const t = new TestGame({ course });
+    const t = new TestGame({ course, items: { handlers: { mulligan: ITEM_HANDLERS.mulligan } } });
     t.joinAsAdmin("maya", "Maya");
     t.join("ben", "Ben");
     t.startPlaying();

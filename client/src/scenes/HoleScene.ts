@@ -15,6 +15,8 @@ import {
   NUKE_SIREN_MS,
   ITEM_TUNING,
   type ItemBoxState,
+  EFFECT_INFO,
+  type EffectKind,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 import { startSiren } from "../fx/siren";
@@ -22,6 +24,7 @@ import { ITEM_RENDERERS } from "../items";
 import { SnapshotBuffer, type Point } from "../net/interpolation";
 import type { AdminHit, AdminView } from "../adminHost";
 import type { HudView } from "../ui/hud";
+import { targetPicker } from "../ui/targetPicker";
 
 /** The decoded synced state, as the client reads it. Mirrors RoomState with Map-like players. */
 interface SyncedPlayer {
@@ -31,6 +34,8 @@ interface SyncedPlayer {
   holedOut: boolean;
   connected: boolean;
   spectating: boolean;
+  /** Visible active Effects (Frozen, Shielded...). */
+  effects: Iterable<{ kind: string }>;
 }
 /** A synced terrain edit (flat schema: `surface` is "" for kinds that have none). */
 interface SyncedTerrainEdit {
@@ -69,6 +74,12 @@ interface BallSprite {
   label: Phaser.GameObjects.Text;
   /** "offline" tag under a disconnected Player's ball. */
   badge: Phaser.GameObjects.Text;
+  /** Effect badges (🧊 🛡️ ...) beside the ball. */
+  effects: Phaser.GameObjects.Text;
+  /** The ice block around a Frozen ball. */
+  ice: Phaser.GameObjects.Rectangle;
+  /** The Shield bubble. */
+  bubble: Phaser.GameObjects.Arc;
 }
 
 /** Drag length (screen px) for a full-power shot. */
@@ -133,6 +144,8 @@ export class HoleScene extends Phaser.Scene {
   /** Last obstacle time the server sent, and when (performance.now) it arrived, to run on between patches. */
   private obstacleSync = { serverMs: 0, receivedAt: 0 };
   private aim!: Phaser.GameObjects.Graphics;
+  /** Rings around the balls while the target picker is open. */
+  private pickerMarks!: Phaser.GameObjects.Graphics;
   private balls = new Map<string, BallSprite>();
   /** One floating "?" per Item Box, by box id. */
   private boxes = new Map<number, Phaser.GameObjects.Container>();
@@ -162,6 +175,7 @@ export class HoleScene extends Phaser.Scene {
     this.cup = this.add.graphics().setDepth(1);
     this.obstacles = this.add.graphics().setDepth(3);
     this.aim = this.add.graphics().setDepth(10);
+    this.pickerMarks = this.add.graphics().setDepth(9);
 
     const keyboard = this.input.keyboard!;
     // Capture Tab so the browser doesn't move focus away from the game.
@@ -184,6 +198,18 @@ export class HoleScene extends Phaser.Scene {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) {
         this.aimPoint = null;
+        return;
+      }
+      // Target picker open (Space held): clicking a ball picks it.
+      const picker = targetPicker();
+      if (picker?.isOpen) {
+        const id = this.ballNear(this.worldPoint(pointer), picker.targets().map((t) => t.id));
+        if (id) picker.pick(id);
+        return;
+      }
+      // Frozen: every click is a mash to break out sooner.
+      if (this.amFrozen()) {
+        this.room.send("mash", {});
         return;
       }
       if (this.isSpectating()) {
@@ -222,14 +248,53 @@ export class HoleScene extends Phaser.Scene {
     // A shot can only start from a ball at rest during play; drop the aim otherwise.
     if (this.aimPoint && !this.canShoot()) this.aimPoint = null;
     this.renderAim();
+    this.renderPickerMarks();
+    const hint = document.getElementById("frozen-hint");
+    if (hint) hint.hidden = !this.amFrozen();
     this.updateCamera();
+  }
+
+  /** Whether this Player's ball is Frozen right now (shots refused; clicks mash). */
+  private amFrozen(): boolean {
+    const state = this.syncedState();
+    const me = state?.players.get(this.room.sessionId);
+    return state?.phase === "playing" && !!me && hasEffect(me, "frozen");
+  }
+
+  /** The ball among `ids` nearest to a world point, within picking range. */
+  private ballNear(at: Phaser.Math.Vector2, ids: string[]): string {
+    let best = "";
+    let bestDistance = PICK_RADIUS;
+    for (const id of ids) {
+      const sprite = this.balls.get(id);
+      if (!sprite?.circle.visible) continue;
+      const d = Phaser.Math.Distance.Between(at.x, at.y, sprite.circle.x, sprite.circle.y);
+      if (d < bestDistance) {
+        best = id;
+        bestDistance = d;
+      }
+    }
+    return best;
+  }
+
+  /** While the picker is open: a gold ring on balls that can be targeted, a grey one on those that can't. */
+  private renderPickerMarks(): void {
+    const g = this.pickerMarks.clear();
+    const picker = targetPicker();
+    if (!picker?.isOpen) return;
+    for (const t of picker.targets()) {
+      const sprite = this.balls.get(t.id);
+      if (!sprite?.circle.visible) continue;
+      g.lineStyle(3, t.targetable ? 0xffd24d : 0x777777, t.targetable ? 1 : 0.6);
+      g.strokeCircle(sprite.circle.x, sprite.circle.y, BALL_RADIUS + 7);
+    }
   }
 
   /** Shots are accepted only while playing, from a ball at rest that hasn't Holed Out. */
   private canShoot(): boolean {
     const state = this.syncedState();
     const me = state?.players?.get(this.room.sessionId);
-    return state?.phase === "playing" && !!me && !me.holedOut && !me.spectating && me.ball.atRest;
+    return state?.phase === "playing" && !!me && !me.holedOut && !me.spectating && me.ball.atRest && !hasEffect(me, "frozen");
   }
 
   /**
@@ -518,6 +583,25 @@ export class HoleScene extends Phaser.Scene {
     }
   }
 
+  /** A Shield popping or ice cracking: a ring and shards flying off the ball. */
+  private playShards(fx: FxMessage, colour: number): void {
+    const ring = this.add.circle(fx.x, fx.y, BALL_RADIUS + 6).setStrokeStyle(3, colour).setDepth(8);
+    this.tweens.add({ targets: ring, scale: 2.2, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.2;
+      const shard = this.add.rectangle(fx.x, fx.y, 4, 4, colour).setDepth(8);
+      this.tweens.add({
+        targets: shard,
+        x: fx.x + Math.cos(a) * 26,
+        y: fx.y + Math.sin(a) * 26,
+        angle: 200,
+        alpha: 0,
+        duration: 450,
+        onComplete: () => shard.destroy(),
+      });
+    }
+  }
+
   /** Short expanding ring and droplets at a point. */
   private playFx(fx: FxMessage): void {
     if (fx.kind === "nukeSiren" || fx.kind === "nukeBlast" || fx.kind === "nukeAbort") {
@@ -530,6 +614,10 @@ export class HoleScene extends Phaser.Scene {
     }
     if (fx.kind === "itemUse") {
       if (fx.item) ITEM_RENDERERS[fx.item]?.playUse(this, fx);
+      return;
+    }
+    if (fx.kind === "shieldPop" || fx.kind === "thaw") {
+      this.playShards(fx, fx.kind === "shieldPop" ? 0xb48cff : 0xd8f4ff);
       return;
     }
     const colour = {
@@ -650,6 +738,15 @@ export class HoleScene extends Phaser.Scene {
             })
             .setOrigin(0.5, 0)
             .setDepth(6),
+          effects: this.add
+            .text(0, 0, "", { fontFamily: "system-ui, sans-serif", fontSize: "11px" })
+            .setOrigin(0, 0.5)
+            .setDepth(6),
+          ice: this.add
+            .rectangle(0, 0, BALL_RADIUS * 3, BALL_RADIUS * 3, 0xbfe9ff, 0.55)
+            .setStrokeStyle(2, 0xffffff, 0.9)
+            .setDepth(5.5),
+          bubble: this.add.circle(0, 0, BALL_RADIUS + 5, 0xb48cff, 0.15).setStrokeStyle(2, 0xd9c4ff, 0.9).setDepth(5.5),
         };
         this.balls.set(id, sprite);
       }
@@ -669,6 +766,18 @@ export class HoleScene extends Phaser.Scene {
       sprite.circle.setAlpha(offline ? 0.35 : 1);
       sprite.label.setAlpha(offline ? 0.6 : 1);
       sprite.badge.setVisible(visible && offline).setPosition(sprite.circle.x, sprite.circle.y + BALL_RADIUS + 2);
+      // Effects: an ice block, a Shield bubble, and a small badge per Effect.
+      const kinds = effectKinds(player);
+      const { x, y } = sprite.circle;
+      sprite.ice.setVisible(visible && kinds.includes("frozen")).setPosition(x, y).setRotation(0.12);
+      sprite.bubble
+        .setVisible(visible && kinds.includes("shielded"))
+        .setPosition(x, y)
+        .setScale(1 + Math.sin(now / 250) * 0.05);
+      sprite.effects
+        .setText(kinds.map((k) => EFFECT_INFO[k]?.icon ?? "").join(""))
+        .setVisible(visible && kinds.length > 0)
+        .setPosition(x + BALL_RADIUS + 6, y - BALL_RADIUS);
     });
 
     for (const [id, sprite] of this.balls) {
@@ -676,6 +785,9 @@ export class HoleScene extends Phaser.Scene {
       sprite.circle.destroy();
       sprite.label.destroy();
       sprite.badge.destroy();
+      sprite.effects.destroy();
+      sprite.ice.destroy();
+      sprite.bubble.destroy();
       this.balls.delete(id);
     }
   }
@@ -793,4 +905,13 @@ function pointInPoly(x: number, y: number, polygon: { x: number; y: number }[]):
     if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
   }
   return inside;
+}
+
+/** The kinds of a synced Player's visible Effects. */
+function effectKinds(player: SyncedPlayer): EffectKind[] {
+  return Array.from(player.effects ?? [], (e) => e.kind as EffectKind);
+}
+
+function hasEffect(player: SyncedPlayer, kind: EffectKind): boolean {
+  return effectKinds(player).includes(kind);
 }
