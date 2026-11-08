@@ -45,6 +45,16 @@ export interface PlayerState {
   ball: BallState;
   /** Strokes per Hole, indexed by Hole number (0-based). Includes penalties. */
   strokes: number[];
+  /** True once the ball has dropped into the Cup on the current Hole. The Player then spectates. */
+  holedOut: boolean;
+}
+
+/** The Cup of the current Hole. Synced (not just in the Hole layout) because Admin Powers can move or resize it. */
+export interface CupState {
+  x: number;
+  y: number;
+  /** Capture radius, px. */
+  radius: number;
 }
 
 export interface RoomState {
@@ -53,8 +63,18 @@ export interface RoomState {
   phase: Phase;
   courseId: string;
   holeIndex: number;
-  /** Clock time (ms) when the current Hole ends; 0 when no Hole is running. */
+  /** Clock time (ms) when the current Hole's timer runs out; 0 outside the playing phase. */
   holeEndsAt: number;
+  /**
+   * Clock time (ms) when the current phase ends on its own: the end of the
+   * countdown, the Hole timer while playing (same as holeEndsAt), or the end
+   * of the scoreboard. 0 in lobby and gameEnd. Clients convert it with the
+   * offset from the `time` message.
+   */
+  phaseEndsAt: number;
+  /** Par of every Hole of the Course, in play order. Its length is the number of Holes. */
+  pars: number[];
+  cup: CupState;
   settings: GameSettings;
   players: Record<string, PlayerState>;
 }

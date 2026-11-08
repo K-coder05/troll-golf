@@ -37,6 +37,7 @@ const longHole = walledHole(3000, 600);
 function newGame(course = longHole): TestGame {
   const t = new TestGame({ course });
   t.join("maya", "Maya");
+  t.startPlaying();
   return t;
 }
 
@@ -68,6 +69,7 @@ describe("shooting a ball", () => {
   it("the angle is the direction of travel, with y pointing down", () => {
     const t = new TestGame({ course: walledHole(1200, 1200) });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", Math.PI / 2, 0.3); // straight down the screen
     t.advanceUntilRest("maya");
     expect(t.ball("maya").x).toBeCloseTo(100, 3);
@@ -177,6 +179,7 @@ describe("walls", () => {
   it("a ball shot at a wall bounces off and stays inside the Hole", () => {
     const t = new TestGame({ course: box });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 1); // straight at the right wall
     let bounced = false;
     let maxX = 0;
@@ -197,6 +200,7 @@ describe("walls", () => {
   it("an angled shot banks off a wall like a mirror", () => {
     const t = new TestGame({ course: box });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", -Math.PI / 4, 0.6); // up-right, into the top wall
     let hitTop = false;
     while (!hitTop) {
@@ -213,6 +217,7 @@ describe("walls", () => {
     const thin = walledHole(1200, 400, [rect(300, 100, 4, 200)]);
     const t = new TestGame({ course: thin });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 1);
     let maxX = 0;
     while (!t.ball("maya").atRest) {
@@ -226,6 +231,7 @@ describe("walls", () => {
     const open: CourseData = { ...longHole, holes: [{ ...longHole.holes[0]!, width: 500, walls: [] }] };
     const t = new TestGame({ course: open });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 1);
     while (!t.ball("maya").atRest) {
       t.advance(FRAME_MS);
@@ -236,6 +242,7 @@ describe("walls", () => {
   it("the placeholder Hole's centre block bounces a straight shot back", () => {
     const t = new TestGame();
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 1);
     let maxX = 0;
     let bounced = false;
@@ -273,6 +280,7 @@ describe("the physics clock", () => {
       const t = new TestGame({ course: walledHole(600, 400) });
       t.join("maya");
       t.join("ben");
+      t.startPlaying();
       t.shoot("maya", 0.7, 1);
       t.shoot("ben", -2.1, 0.9);
       t.advance(2500);

@@ -3,7 +3,16 @@
  * files inside. This module must never import Colyseus or Phaser
  * (enforced by test/simulation-boundary.test.ts).
  */
-export { createGame, DEFAULT_SETTINGS, type Game, type CreateGameOptions } from "./game";
+export {
+  createGame,
+  DEFAULT_SETTINGS,
+  COUNTDOWN_MS,
+  SCOREBOARD_MS,
+  CUP_CAPTURE_SPEED,
+  unfinishedScore,
+  type Game,
+  type CreateGameOptions,
+} from "./game";
 export type { Intent, IntentResult, IntentRejection } from "./intents";
 export { everyone, toPlayer, toAdmin, type Audience, type GameEvent } from "./events";
 export { createSeededRng, mathRandomRng, type Rng } from "./random";

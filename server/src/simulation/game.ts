@@ -35,6 +35,18 @@ const REST_STEPS = Math.round(REST_DURATION_MS / PHYSICS_STEP_MS);
 const MAX_STEPS_PER_CALL = 15;
 /** Speed (px/s) a Boost Pad of strength 1 adds. */
 export const BOOST_IMPULSE = 500;
+/**
+ * A ball inside the Cup's capture radius drops in only below this speed (px/s);
+ * faster, it lips out and keeps rolling. On Fairway a ball this fast would roll
+ * on for about 150 px.
+ */
+export const CUP_CAPTURE_SPEED = 220;
+/** The 3-2-1 before each Hole. */
+export const COUNTDOWN_MS = 3000;
+/** The scoreboard between Holes. */
+export const SCOREBOARD_MS = 8000;
+/** Strokes added to an unfinished Player's score when the Hole timer runs out (before the stroke cap). */
+export const UNFINISHED_PENALTY = 2;
 /** Balls joining at the same time line up around the Tee instead of on top of each other. */
 const TEE_SPACING = BALL_RADIUS * 2.5;
 const TEE_SLOTS: Vec2[] = [
@@ -73,18 +85,29 @@ export interface Game {
   drainEvents(): GameEvent[];
 }
 
+/**
+ * The score of a Player who hasn't Holed Out when the Hole ends:
+ * min(Strokes + 2, stroke cap), with the stroke cap at Par + strokeCapOverPar.
+ */
+export function unfinishedScore(strokes: number, par: number, strokeCapOverPar: number): number {
+  return Math.min(strokes + UNFINISHED_PENALTY, par + strokeCapOverPar);
+}
+
 export function createGame(options: CreateGameOptions): Game {
-  // options.rng and options.clock are not used yet; every later roll and
-  // timestamp must come from them so tests stay deterministic.
-  const { course } = options;
+  // options.rng is not used yet; every later roll must come from it so tests stay deterministic.
+  const { course, clock } = options;
   if (course.holes.length === 0) throw new Error(`Course "${course.id}" has no Holes`);
 
+  const firstHole = course.holes[0]!;
   const state: RoomState = {
     code: options.code,
     phase: "lobby",
     courseId: course.id,
     holeIndex: 0,
     holeEndsAt: 0,
+    phaseEndsAt: 0,
+    pars: course.holes.map((h) => h.par),
+    cup: { ...firstHole.cup },
     settings: { ...DEFAULT_SETTINGS, ...options.settings },
     players: {},
   };
@@ -97,34 +120,149 @@ export function createGame(options: CreateGameOptions): Game {
 
   const currentHole = () => course.holes[state.holeIndex]!;
 
-  // Ticket 04 passes a surface lookup as dampingScale; ticket 05 rebuilds the world per Hole.
-  const surfaces = courseSurfaces(currentHole());
-  const physics = new PhysicsWorld({
-    hole: currentHole(),
-    dampingScale: (_id, position) => SURFACE_DAMPING[surfaces.at(position)],
-  });
+  // The physics world and surface lookup of the current Hole, rebuilt by startHole().
+  let surfaces = courseSurfaces(currentHole());
+  let physics = newPhysicsWorld();
   // Boost Pads / Teleporters a ball is currently inside, so each fires once per entry.
   const insidePads = new Map<string, Set<number>>();
   const portalLocked = new Set<string>();
   // Consecutive physics steps each moving ball has spent under REST_SPEED.
   const slowSteps = new Map<string, number>();
+  // Balls inside the Cup's capture radius that already lipped out, so each pass lips out once.
+  const lippedOut = new Set<string>();
 
   const emit = (event: GameEvent) => events.push(event);
 
-  /** A free spot on or next to the Tee. */
-  function teeSpot(): Vec2 {
+  function newPhysicsWorld(): PhysicsWorld {
+    return new PhysicsWorld({
+      hole: currentHole(),
+      // Reads `surfaces` at call time, so it follows the current Hole.
+      dampingScale: (_id, position) => SURFACE_DAMPING[surfaces.at(position)],
+    });
+  }
+
+  /** A spot on or next to the Tee that none of `taken` covers. */
+  function teeSpot(taken: Vec2[]): Vec2 {
     const tee = currentHole().tee;
-    const balls = Object.values(state.players).map((p) => p.ball);
-    const free = (spot: Vec2) => balls.every((b) => Math.hypot(b.x - spot.x, b.y - spot.y) >= BALL_RADIUS * 2);
+    const free = (spot: Vec2) => taken.every((b) => Math.hypot(b.x - spot.x, b.y - spot.y) >= BALL_RADIUS * 2);
     const spots = TEE_SLOTS.map((o) => ({ x: tee.x + o.x * TEE_SPACING, y: tee.y + o.y * TEE_SPACING }));
-    return spots.find(free) ?? tee;
+    return spots.find(free) ?? { ...tee };
+  }
+
+  /** Balls currently on the course (not in the Cup). */
+  const ballsInPlay = () =>
+    Object.values(state.players)
+      .filter((p) => !p.holedOut)
+      .map((p) => p.ball);
+
+  function placeOnTee(player: PlayerState, spot: Vec2): void {
+    player.ball = { x: spot.x, y: spot.y, vx: 0, vy: 0, atRest: true, restSpot: { ...spot } };
+    player.holedOut = false;
+  }
+
+  function forgetBall(id: string): void {
+    slowSteps.delete(id);
+    insidePads.delete(id);
+    portalLocked.delete(id);
+    lippedOut.delete(id);
+  }
+
+  // ---- Hole flow: lobby -> countdown -> playing -> holeEnd -> ... -> gameEnd ----
+
+  /**
+   * Set up Hole `index` and begin its countdown: a fresh physics world, the
+   * Cup back to the Hole's own, every ball on the Tee and nobody Holed Out.
+   * Everyone is sent the new layout.
+   */
+  function startHole(index: number): void {
+    state.holeIndex = index;
+    const hole = currentHole();
+    surfaces = courseSurfaces(hole);
+    physics = newPhysicsWorld();
+    state.cup = { ...hole.cup };
+    const placed: Vec2[] = [];
+    for (const player of Object.values(state.players)) {
+      forgetBall(player.id);
+      const spot = teeSpot(placed);
+      placed.push(spot);
+      placeOnTee(player, spot);
+      physics.addBall(player.id, spot);
+    }
+    state.phase = "countdown";
+    state.phaseEndsAt = clock.now() + COUNTDOWN_MS;
+    state.holeEndsAt = 0;
+    emit({ type: "hole", payload: { holeIndex: index, hole }, audience: everyone });
+  }
+
+  /** The countdown is over: shots are allowed and the Hole timer runs. */
+  function startPlaying(): void {
+    state.phase = "playing";
+    state.holeEndsAt = clock.now() + state.settings.holeTimerSec * 1000;
+    state.phaseEndsAt = state.holeEndsAt;
+  }
+
+  /** Score anyone unfinished, freeze the balls and show the scoreboard. */
+  function endHole(): void {
+    const par = currentHole().par;
+    for (const player of Object.values(state.players)) {
+      if (player.holedOut) continue;
+      physics.stop(player.id);
+      player.ball.vx = 0;
+      player.ball.vy = 0;
+      player.ball.atRest = true;
+      const strokes = player.strokes[state.holeIndex] ?? 0;
+      player.strokes[state.holeIndex] = unfinishedScore(strokes, par, state.settings.strokeCapOverPar);
+    }
+    state.phase = "holeEnd";
+    state.holeEndsAt = 0;
+    state.phaseEndsAt = clock.now() + SCOREBOARD_MS;
+    emit({ type: "feed", payload: { text: `Hole ${state.holeIndex + 1} over` }, audience: everyone });
+  }
+
+  function endGame(): void {
+    state.phase = "gameEnd";
+    state.phaseEndsAt = 0;
+    state.holeEndsAt = 0;
+    emit({ type: "feed", payload: { text: "Game over" }, audience: everyone });
+  }
+
+  /** Moves the flow on when a phase's time is up or everyone has Holed Out. */
+  function advancePhase(): void {
+    const now = clock.now();
+    switch (state.phase) {
+      case "countdown":
+        if (now >= state.phaseEndsAt) startPlaying();
+        break;
+      case "playing": {
+        const players = Object.values(state.players);
+        const everyoneIn = players.length > 0 && players.every((p) => p.holedOut);
+        if (everyoneIn || now >= state.holeEndsAt) endHole();
+        break;
+      }
+      case "holeEnd":
+        if (now < state.phaseEndsAt) break;
+        if (state.holeIndex + 1 < course.holes.length) startHole(state.holeIndex + 1);
+        else endGame();
+        break;
+      default:
+        break;
+    }
+  }
+
+  function start(playerId: string): IntentResult {
+    if (!state.players[playerId]) return { ok: false, reason: "unknown_player" };
+    if (state.phase !== "lobby") return { ok: false, reason: "wrong_phase" };
+    startHole(0);
+    return { ok: true };
   }
 
   function join(playerId: string, name: string, color: string): IntentResult {
     if (state.players[playerId]) return { ok: false, reason: "already_joined" };
     if (Object.keys(state.players).length >= MAX_PLAYERS) return { ok: false, reason: "room_full" };
 
-    const spot = teeSpot();
+    // Joining mid-game puts the ball on the current Hole's Tee for now.
+    // Ticket 08 makes late joiners wait for the next Hole, scored at the stroke cap.
+    const spot = teeSpot(ballsInPlay());
     const player: PlayerState = {
       id: playerId,
       name: cleanName(name, joinCount),
@@ -132,10 +270,12 @@ export function createGame(options: CreateGameOptions): Game {
       connected: true,
       ball: { x: spot.x, y: spot.y, vx: 0, vy: 0, atRest: true, restSpot: { ...spot } },
       strokes: course.holes.map(() => 0),
+      holedOut: false,
     };
     joinCount++;
     state.players[playerId] = player;
     physics.addBall(playerId, spot);
+    emit({ type: "time", payload: { now: clock.now() }, audience: toPlayer(playerId) });
     emit({ type: "hole", payload: { holeIndex: state.holeIndex, hole: currentHole() }, audience: toPlayer(playerId) });
     emit({ type: "feed", payload: { text: `${player.name} joined` }, audience: everyone });
     return { ok: true };
@@ -148,9 +288,7 @@ export function createGame(options: CreateGameOptions): Game {
     // (connected = false) when someone drops mid-game.
     delete state.players[playerId];
     physics.removeBall(playerId);
-    slowSteps.delete(playerId);
-    insidePads.delete(playerId);
-    portalLocked.delete(playerId);
+    forgetBall(playerId);
     emit({ type: "feed", payload: { text: `${player.name} left` }, audience: everyone });
     return { ok: true };
   }
@@ -161,7 +299,9 @@ export function createGame(options: CreateGameOptions): Game {
     if (!Number.isFinite(angle) || !Number.isFinite(power) || power <= 0) {
       return { ok: false, reason: "invalid_payload" };
     }
-    // Ticket 05 adds the phase check; Freeze (15) and Ball Grab (10) add theirs here.
+    if (state.phase !== "playing") return { ok: false, reason: "wrong_phase" };
+    if (player.holedOut) return { ok: false, reason: "holed_out" };
+    // Freeze (15) and Ball Grab (10) add their checks here.
     if (!player.ball.atRest) return { ok: false, reason: "ball_moving" };
 
     const from = surfaces.at(player.ball);
@@ -236,12 +376,56 @@ export function createGame(options: CreateGameOptions): Game {
     }
   }
 
-  /** One fixed 60 Hz step: move every ball, then apply the rest rule. */
+  /**
+   * The Cup: a ball inside the capture radius drops in when it's slower than
+   * CUP_CAPTURE_SPEED, and lips out (once per pass, rolling on) when faster.
+   * Returns true if the ball Holed Out.
+   */
+  function checkCup(player: PlayerState): boolean {
+    const ball = player.ball;
+    const cup = state.cup;
+    if (Math.hypot(ball.x - cup.x, ball.y - cup.y) > cup.radius) {
+      lippedOut.delete(player.id);
+      return false;
+    }
+    if (Math.hypot(ball.vx, ball.vy) < CUP_CAPTURE_SPEED) {
+      holeOut(player);
+      return true;
+    }
+    if (!lippedOut.has(player.id)) {
+      lippedOut.add(player.id);
+      emit({ type: "fx", payload: { kind: "lipOut", x: cup.x, y: cup.y }, audience: everyone });
+    }
+    return false;
+  }
+
+  /** The ball drops in: it leaves the physics world and the Player spectates. */
+  function holeOut(player: PlayerState): void {
+    const cup = state.cup;
+    physics.removeBall(player.id);
+    forgetBall(player.id);
+    player.holedOut = true;
+    player.ball.x = cup.x;
+    player.ball.y = cup.y;
+    player.ball.vx = 0;
+    player.ball.vy = 0;
+    player.ball.atRest = true;
+    emit({ type: "fx", payload: { kind: "holeOut", x: cup.x, y: cup.y }, audience: everyone });
+    const strokes = player.strokes[state.holeIndex] ?? 0;
+    emit({
+      type: "feed",
+      payload: { text: `${player.name} holed out in ${strokes} (${parLabel(strokes, currentHole().par)})` },
+      audience: everyone,
+    });
+  }
+
+  /** One fixed 60 Hz step: move every ball, then apply the Cup, hazards and the rest rule. */
   function physicsStep(): void {
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
 
     for (const [id, player] of Object.entries(state.players)) {
+      if (player.holedOut) continue;
       const ball = player.ball;
       const motion = physics.motion(id);
       ball.x = motion.x;
@@ -250,6 +434,7 @@ export function createGame(options: CreateGameOptions): Game {
       ball.vy = motion.vy;
 
       if (!ball.atRest) {
+        if (checkCup(player)) continue;
         if (isHazard(surfaces.at(ball))) {
           sinkBall(player, motion);
           continue;
@@ -289,6 +474,8 @@ export function createGame(options: CreateGameOptions): Game {
           return join(playerId, intent.name, intent.color);
         case "leave":
           return leave(playerId);
+        case "start":
+          return start(playerId);
         case "shoot":
           return shoot(playerId, intent.angle, intent.power);
         default:
@@ -298,14 +485,16 @@ export function createGame(options: CreateGameOptions): Game {
     step(dtMs) {
       if (!(dtMs > 0)) return;
       // Physics only ever advances in whole fixed steps; leftovers carry over.
+      // Balls only move while a Hole is being played.
       pendingMs += dtMs;
       let steps = 0;
       while (pendingMs >= PHYSICS_STEP_MS - 1e-6 && steps < MAX_STEPS_PER_CALL) {
-        physicsStep();
+        if (state.phase === "playing") physicsStep();
         pendingMs -= PHYSICS_STEP_MS;
         steps++;
       }
       if (steps === MAX_STEPS_PER_CALL) pendingMs = 0;
+      advancePhase();
     },
     getState() {
       return state;
@@ -316,6 +505,13 @@ export function createGame(options: CreateGameOptions): Game {
       return drained;
     },
   };
+}
+
+/** "par", "+2", "-1"... */
+function parLabel(strokes: number, par: number): string {
+  const diff = strokes - par;
+  if (diff === 0) return "par";
+  return diff > 0 ? `+${diff}` : `${diff}`;
 }
 
 function clamp(value: number, min: number, max: number): number {

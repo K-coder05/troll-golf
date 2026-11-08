@@ -70,3 +70,13 @@ Polygon or rectangle objects. Ground not covered by any zone is Fairway. Where z
 Missing or duplicate Tee or Cup, missing or invalid `par`, unknown classes, wall or surface polygons that are degenerate or self-intersecting, a Teleporter without exactly one partner, a Boost Pad without `direction`, and incomplete Windmills or Sliding Walls. Every problem found is reported together.
 
 The output shape is `CourseData` in `shared/src/course.ts`. A sample map is in `shared/src/courseConverter/fixtures/sample-hole.tmj`.
+
+## Playing a Course
+
+The server plays converted JSON imported in `server/src/courses/index.ts` (`loadCourse` checks its shape at startup; `courses` lists them by id, `defaultCourse` is what new rooms play). The 3-Hole sample Course is built from `server/src/courses/sample/*.tmj`:
+
+```sh
+npm run convert-sample-course   # rewrites server/src/courses/sample.json
+```
+
+A test checks that `sample.json` matches its `.tmj` sources, so re-run this after editing them.

@@ -44,28 +44,37 @@ describe("GolfRoom over the network", () => {
     const maya = track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366" }));
     expect(isValidRoomCode(maya.roomId)).toBe(true);
     maya.onMessage("hole", () => undefined);
+    maya.onMessage("time", () => undefined);
     const mayaFeed: string[] = [];
     maya.onMessage("feed", (m: { text: string }) => mayaFeed.push(m.text));
 
     const ben = track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff" }));
     ben.onMessage("hole", () => undefined);
+    ben.onMessage("time", () => undefined);
     expect(ben.roomId).toBe(maya.roomId);
 
     await waitFor(() => playersOf(maya).size === 2 && playersOf(ben).size === 2);
     expect((ben.state as unknown as RoomState).code).toBe(maya.roomId);
+    // Rooms play the converted sample Course by default.
+    expect((ben.state as unknown as RoomState).courseId).toBe("sample");
     // An everyone-audience event from the simulation reached Maya's connection.
     await waitFor(() => mayaFeed.includes("Ben joined"));
 
+    // The first join started the game: after the 3-2-1 countdown the Hole is being played.
+    const phase = () => (ben.state as unknown as RoomState).phase;
+    expect(["countdown", "playing"]).toContain(phase());
+    await waitFor(() => phase() === "playing", 4000);
+
     // Maya shoots; Ben's copy of the state sees her ball leave the Tee and count a Stroke.
     const mayaBall = () => playersOf(ben).get(maya.sessionId)?.ball;
-    const startX = mayaBall()!.x;
+    const start = { x: mayaBall()!.x, y: mayaBall()!.y };
     maya.send("shoot", { angle: Math.PI / 2, power: 0.5 });
     await waitFor(() => mayaBall()!.atRest === false);
     await waitFor(() => mayaBall()!.atRest === true, 5000);
-    expect(mayaBall()!.x).toBeCloseTo(startX, 0);
-    expect(mayaBall()!.y).not.toBeCloseTo(320, 0);
+    expect(mayaBall()!.x).toBeCloseTo(start.x, 0);
+    expect(mayaBall()!.y).not.toBeCloseTo(start.y, 0);
     expect(playersOf(ben).get(maya.sessionId)?.strokes[0]).toBe(1);
-  }, 10_000);
+  }, 15_000);
 
   it("refuses a join with a wrong code", async () => {
     await expect(newClient().joinById("ZZZZ", { name: "Lost", color: "#000000" })).rejects.toThrow();

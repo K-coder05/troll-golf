@@ -33,6 +33,7 @@ export const PlayerSchema = schema(
     connected: t.boolean(),
     ball: BallSchema,
     strokes: t.array("number"),
+    holedOut: t.boolean(),
   },
   "Player",
 );
@@ -48,6 +49,15 @@ export const SettingsSchema = schema(
   "Settings",
 );
 
+export const CupSchema = schema(
+  {
+    x: t.number(),
+    y: t.number(),
+    radius: t.number(),
+  },
+  "Cup",
+);
+
 export const RoomStateSchema = schema(
   {
     code: t.string(),
@@ -55,6 +65,9 @@ export const RoomStateSchema = schema(
     courseId: t.string(),
     holeIndex: t.number(),
     holeEndsAt: t.number(),
+    phaseEndsAt: t.number(),
+    pars: t.array("number"),
+    cup: CupSchema,
     settings: SettingsSchema,
     players: t.map(PlayerSchema),
   },

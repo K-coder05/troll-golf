@@ -37,6 +37,7 @@ const everywhere = (kind: SurfaceKind) => ({ surfaces: [{ kind, polygon: rect(0,
 function distanceOnSurface(kind: SurfaceKind | null, power = 0.4): number {
   const t = new TestGame({ course: hole(kind ? everywhere(kind) : {}) });
   t.join("maya");
+  t.startPlaying();
   t.shoot("maya", 0, power);
   t.advanceUntilRest("maya");
   return t.ball("maya").x - 100;
@@ -63,6 +64,7 @@ describe("surface friction", () => {
     });
     const t = new TestGame({ course });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 0.4);
     t.advanceUntilRest("maya");
     expect(t.ball("maya").x - 100).toBeCloseTo(distanceOnSurface("sand"), 3);
@@ -74,6 +76,7 @@ describe("Sand power cut", () => {
     const launch = (course: CourseData) => {
       const t = new TestGame({ course });
       t.join("maya");
+      t.startPlaying();
       t.shoot("maya", 0, 1);
       return t.ball("maya");
     };
@@ -89,6 +92,7 @@ describe("hazards", () => {
     it(`a ball entering ${kind} gets +1 Stroke and ends at its Rest Spot, at rest`, () => {
       const t = new TestGame({ course: hole({ surfaces: [{ kind, polygon: rect(400, 0, 400, 600) }] }) });
       t.join("maya");
+      t.startPlaying();
       t.shoot("maya", 0, 0.8);
       t.advanceUntilRest("maya");
       const ball = t.ball("maya");
@@ -103,6 +107,7 @@ describe("hazards", () => {
   it("returns to the latest Rest Spot, not the Tee", () => {
     const t = new TestGame({ course: hole({ surfaces: [{ kind: "water", polygon: rect(900, 0, 400, 600) }] }) });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 0.3);
     t.advanceUntilRest("maya");
     const rest = { ...t.ball("maya").restSpot };
@@ -116,6 +121,7 @@ describe("hazards", () => {
   it("splash and feed events are broadcast", () => {
     const t = new TestGame({ course: hole({ surfaces: [{ kind: "water", polygon: rect(400, 0, 400, 600) }] }) });
     t.join("maya");
+    t.startPlaying();
     t.drain();
     t.shoot("maya", 0, 0.8);
     t.advanceUntilRest("maya");
@@ -130,8 +136,10 @@ describe("Boost Pads", () => {
     const pad = { polygon: rect(300, 200, 100, 200), angle: 0, strength: 1 };
     const t = new TestGame({ course: hole({ boostPads: [pad] }) });
     t.join("maya");
+    t.startPlaying();
     const plain = new TestGame({ course: hole() });
     plain.join("maya");
+    plain.startPlaying();
     t.shoot("maya", 0, 0.3);
     plain.shoot("maya", 0, 0.3);
     t.advanceUntilRest("maya");
@@ -144,6 +152,7 @@ describe("Boost Pads", () => {
     const pad = { polygon: rect(300, 200, 2000, 200), angle: 0, strength: 1 };
     const t = new TestGame({ course: hole({ boostPads: [pad] }) });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 0.3);
     let before = 0;
     let fired = 0;
@@ -161,6 +170,7 @@ describe("Boost Pads", () => {
     const pad = { polygon: rect(50, 250, 100, 100), angle: Math.PI / 2, strength: 2 };
     const t = new TestGame({ course: hole({ boostPads: [pad] }) });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 0.1);
     t.advance(FRAME_MS);
     expect(t.ball("maya").vy).toBeGreaterThan(BOOST_IMPULSE * 2 * 0.9);
@@ -173,6 +183,7 @@ describe("Teleporters", () => {
   it("put the ball at the paired exit with the same speed, without bouncing back", () => {
     const t = new TestGame({ course });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 0.6);
     let speedIn = 0;
     let jumped = false;
@@ -195,6 +206,7 @@ describe("Teleporters", () => {
   it("work in the other direction too", () => {
     const t = new TestGame({ course });
     t.join("maya");
+    t.startPlaying();
     t.shoot("maya", 0, 0.1);
     t.advanceUntilRest("maya"); // stops short of the entrance
     expect(t.ball("maya").x).toBeLessThan(400);

@@ -43,8 +43,8 @@ export interface FeedMessage {
 }
 
 /**
- * The Hole being played, sent to a Player when they join (and, from ticket 05,
- * when a new Hole starts). Static geometry only: anything that changes during
+ * The Hole being played, sent to a Player when they join and to everyone
+ * when a new Hole starts. Static geometry only: anything that changes during
  * play (balls, the Cup, terrain edits) lives in synced state.
  */
 export interface HoleMessage {
@@ -52,17 +52,31 @@ export interface HoleMessage {
   hole: HoleData;
 }
 
-/** A one-shot visual effect at a point of the Hole. Cosmetic: carries no secrets. */
+/**
+ * A one-shot visual effect at a point of the Hole. Cosmetic: carries no secrets.
+ * `holeOut`: a ball dropped into the Cup. `lipOut`: a ball rolled over the Cup too fast.
+ */
 export interface FxMessage {
-  kind: "splash" | "void" | "boost" | "teleport";
+  kind: "splash" | "void" | "boost" | "teleport" | "holeOut" | "lipOut";
   x: number;
   y: number;
+}
+
+/**
+ * The server clock, sent to a Player when they join, so the client can turn
+ * the clock times in state (phaseEndsAt, holeEndsAt) into a countdown even if
+ * its own clock is off.
+ */
+export interface TimeMessage {
+  /** Server clock time (ms) when the message was sent. */
+  now: number;
 }
 
 export interface ServerMessages {
   feed: FeedMessage;
   fx: FxMessage;
   hole: HoleMessage;
+  time: TimeMessage;
 }
 
 export type ServerMessageType = keyof ServerMessages;

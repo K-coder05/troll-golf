@@ -1,6 +1,7 @@
 import type { CourseData, GameSettings } from "@troll-golf/shared";
 import { placeholderCourse } from "../src/courses/placeholder";
 import {
+  COUNTDOWN_MS,
   createGame,
   createSeededRng,
   ManualClock,
@@ -47,6 +48,27 @@ export class TestGame {
 
   join(playerId: string, name = playerId, color = "#ffffff"): IntentResult {
     return this.send(playerId, { type: "join", name, color });
+  }
+
+  /** Start the game from the lobby (as the first Player) and wait out the 3-2-1, so shots are allowed. */
+  startPlaying(): void {
+    const first = Object.keys(this.state.players)[0];
+    if (!first) throw new Error("Nobody has joined");
+    const result = this.send(first, { type: "start" });
+    if (!result.ok) throw new Error(`Start refused: ${result.reason}`);
+    // Frame times don't add up to exactly 3000 ms in floating point; allow one extra frame.
+    this.advanceUntilPhase("playing", COUNTDOWN_MS + FRAME_MS);
+  }
+
+  /** Advance frame by frame until the phase changes to `phase`. Returns the ms it took. */
+  advanceUntilPhase(phase: string, maxMs = 200_000): number {
+    let elapsed = 0;
+    while (this.state.phase !== phase) {
+      if (elapsed >= maxMs) throw new Error(`Still ${this.state.phase} after ${maxMs} ms, expected ${phase}`);
+      this.advance(FRAME_MS);
+      elapsed += FRAME_MS;
+    }
+    return elapsed;
   }
 
   shoot(playerId: string, angle: number, power: number): IntentResult {

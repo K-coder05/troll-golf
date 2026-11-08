@@ -31,6 +31,13 @@ One shot, or one penalty added to a Player's score on a Hole.
 When a Player's ball drops into the Cup. That Player is done with the Hole but stays in the Room as a spectator.
 _Avoid_: Finish, sink
 
+**Capture radius**:
+How close to the centre of the Cup a ball must be to drop in. It must also be slower than the capture speed; a faster ball **lips out** and rolls on.
+_Avoid_: Cup size (that's the Admin Power that changes it)
+
+**Stroke cap**:
+The most Strokes a Player who hasn't Holed Out can score on a Hole when the timer runs out: Par + 4 by default. They score min(Strokes + 2, stroke cap).
+
 **Rest Spot**:
 Where a ball last came to rest. It goes back there after a Water or Void penalty.
 _Avoid_: Checkpoint, last position

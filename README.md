@@ -13,7 +13,7 @@ npm workspaces, all TypeScript:
 | --- | --- |
 | `shared/` | State, course data and message types used by both sides, and room-code helpers. Consumed as TypeScript source. |
 | `server/` | `src/simulation/`: the Game simulation (framework-free, owns every rule). `src/room/`: the thin Colyseus adapter. `src/app.ts`: HTTP + WebSocket server that also serves the built client. |
-| `tools/` | Dev tooling. `npm run convert-course` turns Tiled maps into course data; see `docs/course-authoring.md`. |
+| `tools/` | Dev tooling. `npm run convert-course` turns Tiled maps into course data; see `docs/course-authoring.md`. The sample Course's maps are in `server/src/courses/sample/`; `npm run convert-sample-course` rebuilds `server/src/courses/sample.json`. |
 | `client/` | Phaser + Vite browser client. It renders synced state and sends intents. |
 
 Tests live in `server/test/` (simulation scenarios through `test/harness.ts`, plus a WebSocket smoke test) and next to shared code.
@@ -25,7 +25,7 @@ npm install
 npm run dev        # server on :2567 (tsx watch) + client on http://localhost:5173 (Vite)
 ```
 
-Open http://localhost:5173 in two browsers. Create a room in one, enter its 4-letter code in the other. Each Player gets a ball on the Tee: drag back from your ball and release to shoot, hold Tab to see the whole Hole. A link like `http://localhost:5173/?room=ABCD` pre-fills the code.
+Open http://localhost:5173 in two browsers. Create a room in one, enter its 4-letter code in the other. Creating the room starts a 3-Hole round of the sample Course (no lobby screen yet): a 3-2-1 countdown, then drag back from your ball and release to shoot, hold Tab to see the whole Hole. A Hole ends when everyone has Holed Out or the 90 s timer runs out, then an 8 s scoreboard shows; final results follow the last Hole. A link like `http://localhost:5173/?room=ABCD` pre-fills the code.
 
 Other scripts:
 

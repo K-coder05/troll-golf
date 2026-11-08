@@ -1,5 +1,14 @@
 import type { Room } from "@colyseus/sdk";
-import { BALL_RADIUS, type BallState, type FxMessage, type HoleMessage, type ShootMessage, type SurfaceKind } from "@troll-golf/shared";
+import {
+  BALL_RADIUS,
+  type BallState,
+  type CupState,
+  type FxMessage,
+  type HoleMessage,
+  type Phase,
+  type ShootMessage,
+  type SurfaceKind,
+} from "@troll-golf/shared";
 import * as Phaser from "phaser";
 
 /** The decoded synced state, as the client reads it. Mirrors RoomState with Map-like players. */
@@ -7,10 +16,12 @@ interface SyncedPlayer {
   name: string;
   color: string;
   ball: BallState;
-  strokes: { at(i: number): number | undefined };
+  holedOut: boolean;
 }
 interface SyncedState {
+  phase: Phase;
   holeIndex: number;
+  cup: CupState;
   players: {
     forEach(cb: (player: SyncedPlayer, id: string) => void): void;
     get(id: string): SyncedPlayer | undefined;
@@ -23,8 +34,6 @@ export interface HoleSceneData {
   hole: () => HoleMessage | null;
   /** Hands over the one-shot effects received since the last call. */
   takeFx: () => FxMessage[];
-  /** Called every frame with the local Player's Strokes on this Hole. */
-  onStrokes: (strokes: number) => void;
 }
 
 interface BallSprite {
@@ -42,6 +51,8 @@ const GRAB_RADIUS = BALL_RADIUS * 4;
 const AIM_LINE_LENGTH = BALL_RADIUS * 2 * 2;
 /** World px visible across the shorter screen side while following the ball. */
 const FOLLOW_VIEW = 520;
+/** A synced jump longer than this (a new Hole, a teleport) snaps the sprite instead of easing. */
+const SNAP_DISTANCE = 150;
 
 const COLORS = {
   fairway: 0x2f8f46,
@@ -71,10 +82,11 @@ export class HoleScene extends Phaser.Scene {
   private room!: Room;
   private holeSource!: () => HoleMessage | null;
   private takeFx!: () => FxMessage[];
-  private onStrokes!: (strokes: number) => void;
 
   private drawnHole: HoleMessage | null = null;
   private course!: Phaser.GameObjects.Graphics;
+  private cup!: Phaser.GameObjects.Graphics;
+  private drawnCup = "";
   private aim!: Phaser.GameObjects.Graphics;
   private balls = new Map<string, BallSprite>();
   private tab!: Phaser.Input.Keyboard.Key;
@@ -92,12 +104,12 @@ export class HoleScene extends Phaser.Scene {
     this.room = data.room;
     this.holeSource = data.hole;
     this.takeFx = data.takeFx;
-    this.onStrokes = data.onStrokes;
   }
 
   create(): void {
     this.cameras.main.setBackgroundColor(COLORS.outside);
     this.course = this.add.graphics().setDepth(0);
+    this.cup = this.add.graphics().setDepth(1);
     this.aim = this.add.graphics().setDepth(10);
 
     const keyboard = this.input.keyboard!;
@@ -112,9 +124,8 @@ export class HoleScene extends Phaser.Scene {
         this.aimPoint = null;
         return;
       }
-      const mine = this.myBall();
       const sprite = this.balls.get(this.room.sessionId);
-      if (!mine?.atRest || !sprite) return;
+      if (!this.canShoot() || !sprite) return;
       const world = this.worldPoint(pointer);
       if (Phaser.Math.Distance.Between(world.x, world.y, sprite.circle.x, sprite.circle.y) > GRAB_RADIUS) return;
       this.aimPoint = world;
@@ -125,7 +136,7 @@ export class HoleScene extends Phaser.Scene {
     this.input.on("pointerup", () => {
       const shot = this.currentShot();
       this.aimPoint = null;
-      if (shot && shot.power >= MIN_POWER && this.myBall()?.atRest) {
+      if (shot && shot.power >= MIN_POWER && this.canShoot()) {
         this.room.send("shoot", shot satisfies ShootMessage);
       }
     });
@@ -137,14 +148,38 @@ export class HoleScene extends Phaser.Scene {
     if (!this.drawnHole) return;
 
     for (const fx of this.takeFx()) this.playFx(fx);
+    this.renderCup();
     this.renderBalls();
-    // A shot can only start from a ball at rest; drop the aim if it got knocked.
-    if (this.aimPoint && !this.myBall()?.atRest) this.aimPoint = null;
+    // A shot can only start from a ball at rest during play; drop the aim otherwise.
+    if (this.aimPoint && !this.canShoot()) this.aimPoint = null;
     this.renderAim();
     this.updateCamera();
+  }
 
-    const me = (this.room.state as unknown as SyncedState | undefined)?.players?.get(this.room.sessionId);
-    if (me) this.onStrokes(me.strokes.at(this.drawnHole.holeIndex) ?? 0);
+  /** Shots are accepted only while playing, from a ball at rest that hasn't Holed Out. */
+  private canShoot(): boolean {
+    const state = this.syncedState();
+    const me = state?.players?.get(this.room.sessionId);
+    return state?.phase === "playing" && !!me && !me.holedOut && me.ball.atRest;
+  }
+
+  private syncedState(): SyncedState | undefined {
+    return this.room.state as unknown as SyncedState | undefined;
+  }
+
+  /** The Cup comes from synced state, not the layout, because Admin Powers can move and resize it. */
+  private renderCup(): void {
+    const cup = this.syncedState()?.cup;
+    if (!cup) return;
+    const key = `${cup.x},${cup.y},${cup.radius}`;
+    if (key === this.drawnCup) return;
+    this.drawnCup = key;
+    const g = this.cup.clear();
+    g.fillStyle(COLORS.cup).fillCircle(cup.x, cup.y, cup.radius);
+    g.lineStyle(2, 0xffffff, 0.6).strokeCircle(cup.x, cup.y, cup.radius + 1);
+    // The flag.
+    g.lineStyle(2, 0xdddddd).lineBetween(cup.x, cup.y, cup.x, cup.y - 34);
+    g.fillStyle(0xff3b3b).fillTriangle(cup.x, cup.y - 34, cup.x + 18, cup.y - 28, cup.x, cup.y - 22);
   }
 
   private drawHole(message: HoleMessage): void {
@@ -162,9 +197,6 @@ export class HoleScene extends Phaser.Scene {
 
     g.fillStyle(COLORS.tee).fillRect(hole.tee.x - 12, hole.tee.y - 12, 24, 24);
     g.fillStyle(COLORS.fairway).fillRect(hole.tee.x - 10, hole.tee.y - 10, 20, 20);
-
-    g.fillStyle(COLORS.cup).fillCircle(hole.cup.x, hole.cup.y, hole.cup.radius);
-    g.lineStyle(2, 0xffffff, 0.6).strokeCircle(hole.cup.x, hole.cup.y, hole.cup.radius + 1);
 
     for (const wall of hole.walls) {
       const points = wall.map((p) => new Phaser.Math.Vector2(p.x, p.y));
@@ -224,10 +256,18 @@ export class HoleScene extends Phaser.Scene {
 
   /** Short expanding ring and droplets at a point. */
   private playFx(fx: FxMessage): void {
-    const colour = { splash: 0xcfe6ff, void: 0x8e44ad, boost: 0xffe066, teleport: 0xe9c7ff }[fx.kind];
+    const colour = {
+      splash: 0xcfe6ff,
+      void: 0x8e44ad,
+      boost: 0xffe066,
+      teleport: 0xe9c7ff,
+      holeOut: 0xffd24d,
+      lipOut: 0xffffff,
+    }[fx.kind];
     const ring = this.add.circle(fx.x, fx.y, 4).setStrokeStyle(2, colour).setDepth(8);
-    this.tweens.add({ targets: ring, scale: fx.kind === "splash" ? 5 : 3, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
-    if (fx.kind !== "splash") return;
+    const scale = fx.kind === "splash" || fx.kind === "holeOut" ? 5 : 3;
+    this.tweens.add({ targets: ring, scale, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
+    if (fx.kind !== "splash" && fx.kind !== "holeOut") return;
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
       const drop = this.add.circle(fx.x, fx.y, 2, colour).setDepth(8);
@@ -243,7 +283,7 @@ export class HoleScene extends Phaser.Scene {
   }
 
   private renderBalls(): void {
-    const state = this.room.state as unknown as SyncedState | undefined;
+    const state = this.syncedState();
     if (!state?.players) return;
 
     const seen = new Set<string>();
@@ -264,9 +304,13 @@ export class HoleScene extends Phaser.Scene {
       sprite.circle.setFillStyle(Phaser.Display.Color.HexStringToColor(player.color).color);
       sprite.circle.setStrokeStyle(isMe ? 2 : 1, isMe ? 0xffffff : 0x000000, isMe ? 1 : 0.5);
       // Patches arrive at 20 Hz; ease toward the latest one (ticket 07 brings real interpolation).
-      sprite.circle.x = Phaser.Math.Linear(sprite.circle.x, player.ball.x, 0.4);
-      sprite.circle.y = Phaser.Math.Linear(sprite.circle.y, player.ball.y, 0.4);
+      const far = Phaser.Math.Distance.Between(sprite.circle.x, sprite.circle.y, player.ball.x, player.ball.y) > SNAP_DISTANCE;
+      sprite.circle.x = far ? player.ball.x : Phaser.Math.Linear(sprite.circle.x, player.ball.x, 0.4);
+      sprite.circle.y = far ? player.ball.y : Phaser.Math.Linear(sprite.circle.y, player.ball.y, 0.4);
       sprite.label.setText(player.name).setPosition(sprite.circle.x, sprite.circle.y - BALL_RADIUS - 4);
+      // A ball in the Cup is gone from the course; its Player spectates.
+      sprite.circle.setVisible(!player.holedOut);
+      sprite.label.setVisible(!player.holedOut);
     });
 
     for (const [id, sprite] of this.balls) {
@@ -332,11 +376,6 @@ export class HoleScene extends Phaser.Scene {
       this.camCenter.y = Phaser.Math.Linear(this.camCenter.y, target.y, 0.12);
     }
     cam.centerOn(this.camCenter.x, this.camCenter.y);
-  }
-
-  private myBall(): BallState | undefined {
-    const state = this.room.state as unknown as SyncedState | undefined;
-    return state?.players?.get(this.room.sessionId)?.ball;
   }
 
   private worldPoint(pointer: Phaser.Input.Pointer): Phaser.Math.Vector2 {

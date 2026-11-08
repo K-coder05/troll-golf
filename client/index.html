@@ -34,10 +34,39 @@
       button.secondary { background: #3d6b49; color: var(--text); }
       button:disabled { opacity: 0.6; cursor: wait; }
       #error { min-height: 1.2em; margin: 0; color: var(--error); font-size: 14px; }
-      #hud { position: fixed; top: 12px; left: 12px; padding: 6px 12px; border-radius: 6px; background: rgba(0,0,0,0.45); font-size: 14px; }
+      #hud { position: fixed; top: 12px; left: 12px; max-width: calc(50% - 80px); padding: 6px 12px; border-radius: 6px; background: rgba(0,0,0,0.45); font-size: 14px; }
       #hud .hint { margin-top: 2px; font-size: 12px; color: var(--muted); }
       #hud { pointer-events: none; }
       #hud strong { color: var(--accent); letter-spacing: 0.2em; }
+      #timer {
+        position: fixed; top: 12px; left: 50%; transform: translateX(-50%); pointer-events: none;
+        padding: 4px 16px; border-radius: 6px; background: rgba(0,0,0,0.45);
+        font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums;
+      }
+      #timer.urgent { color: var(--error); }
+      #banner {
+        position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;
+        font-size: 120px; font-weight: 800; color: var(--accent); text-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      }
+      #scoreboard {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+        background: rgba(0,0,0,0.35); pointer-events: none;
+      }
+      #scoreboard .panel {
+        max-width: 100%; overflow-x: auto; padding: 20px 24px; border-radius: 12px; background: var(--panel);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      }
+      #scoreboard h2 { margin: 0 0 12px; text-align: center; }
+      #scoreboard table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+      #scoreboard th, #scoreboard td { padding: 4px 10px; text-align: center; }
+      #scoreboard td:nth-child(2), #scoreboard th:nth-child(2) { text-align: left; white-space: nowrap; }
+      #scoreboard tr.par td { color: var(--muted); font-size: 13px; }
+      #scoreboard tr.me td { background: rgba(255,255,255,0.08); }
+      #scoreboard tr.winner td:nth-child(2)::after { content: " 🏆"; }
+      #scoreboard td.under { color: #7dff7d; }
+      #scoreboard td.over { color: #ffb080; }
+      #scoreboard .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
+      #scoreboard-footer { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 14px; }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -55,8 +84,18 @@
       </form>
     </div>
     <div id="hud" hidden>
-      Room <strong id="room-code"></strong> · <span id="player-count"></span> · <span id="strokes">0 strokes</span>
+      <div id="hole-info"></div>
+      <div class="hint">Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
       <div class="hint">Drag back from your ball and release to shoot · hold Tab to see the whole Hole</div>
+    </div>
+    <div id="timer" hidden></div>
+    <div id="banner" hidden></div>
+    <div id="scoreboard" hidden>
+      <div class="panel">
+        <h2 id="scoreboard-title"></h2>
+        <table id="scoreboard-table"></table>
+        <p id="scoreboard-footer"></p>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -2,13 +2,15 @@ import type { Room } from "@colyseus/sdk";
 import {
   isValidRoomCode,
   normalizeRoomCode,
-  type FeedMessage, type FxMessage,
+  type FeedMessage,
+  type FxMessage,
   type HoleMessage,
   type JoinOptions,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 import { createRoom, joinRoom } from "./net/connection";
 import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
+import { startHud } from "./ui/hud";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("join-form");
@@ -74,25 +76,16 @@ function startGame(room: Room): void {
   room.onMessage("fx", (message: FxMessage) => pendingFx.push(message));
   room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
 
-  const playerCount = $("player-count");
-  room.onStateChange((state: { players?: { size: number } }) => {
-    const n = state.players?.size ?? 0;
-    playerCount.textContent = `${n} player${n === 1 ? "" : "s"}`;
-  });
+  startHud(room, () => hole);
   room.onLeave(() => {
     errorText.textContent = "Disconnected from the room.";
     location.reload();
   });
 
-  const strokesText = $("strokes");
   const sceneData: HoleSceneData = {
     room,
     hole: () => hole,
     takeFx: () => pendingFx.splice(0),
-    onStrokes: (n) => {
-      const text = `${n} stroke${n === 1 ? "" : "s"}`;
-      if (strokesText.textContent !== text) strokesText.textContent = text;
-    },
   };
 
   new Phaser.Game({

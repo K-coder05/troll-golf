@@ -11,6 +11,11 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
   target.courseId = source.courseId;
   target.holeIndex = source.holeIndex;
   target.holeEndsAt = source.holeEndsAt;
+  target.phaseEndsAt = source.phaseEndsAt;
+  syncNumbers(target.pars, source.pars);
+  target.cup.x = source.cup.x;
+  target.cup.y = source.cup.y;
+  target.cup.radius = source.cup.radius;
 
   target.settings.chaosLevel = source.settings.chaosLevel;
   target.settings.holeTimerSec = source.settings.holeTimerSec;
@@ -38,11 +43,15 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
     ball.atRest = player.ball.atRest;
     ball.restSpot.x = player.ball.restSpot.x;
     ball.restSpot.y = player.ball.restSpot.y;
-
-    // Strokes only change length when Holes do; write in place so only changed entries are sent.
-    while (synced.strokes.length > player.strokes.length) synced.strokes.pop();
-    player.strokes.forEach((n, i) => {
-      if (synced.strokes[i] !== n) synced.strokes[i] = n;
-    });
+    synced.holedOut = player.holedOut;
+    syncNumbers(synced.strokes, player.strokes);
   }
+}
+
+/** Write a number array in place, so only changed entries are sent. */
+function syncNumbers(target: { length: number; pop(): unknown; [i: number]: number }, source: readonly number[]): void {
+  while (target.length > source.length) target.pop();
+  source.forEach((n, i) => {
+    if (target[i] !== n) target[i] = n;
+  });
 }
