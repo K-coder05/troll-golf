@@ -14,6 +14,7 @@ import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
 import { PHYSICS_STEP_MS, PhysicsWorld } from "./physics";
 import type { Rng } from "./random";
+import { courseSurfaces, isHazard, pointInPolygon, shotPowerFactor, SURFACE_DAMPING } from "./surfaces";
 
 export const DEFAULT_SETTINGS: GameSettings = {
   chaosLevel: "normal",
@@ -32,6 +33,8 @@ export const MAX_SHOT_SPEED = 1100;
 const REST_STEPS = Math.round(REST_DURATION_MS / PHYSICS_STEP_MS);
 /** A long stall (e.g. a paused server) is not caught up beyond this many steps. */
 const MAX_STEPS_PER_CALL = 15;
+/** Speed (px/s) a Boost Pad of strength 1 adds. */
+export const BOOST_IMPULSE = 500;
 /** Balls joining at the same time line up around the Tee instead of on top of each other. */
 const TEE_SPACING = BALL_RADIUS * 2.5;
 const TEE_SLOTS: Vec2[] = [
@@ -95,7 +98,14 @@ export function createGame(options: CreateGameOptions): Game {
   const currentHole = () => course.holes[state.holeIndex]!;
 
   // Ticket 04 passes a surface lookup as dampingScale; ticket 05 rebuilds the world per Hole.
-  const physics = new PhysicsWorld({ hole: currentHole() });
+  const surfaces = courseSurfaces(currentHole());
+  const physics = new PhysicsWorld({
+    hole: currentHole(),
+    dampingScale: (_id, position) => SURFACE_DAMPING[surfaces.at(position)],
+  });
+  // Boost Pads / Teleporters a ball is currently inside, so each fires once per entry.
+  const insidePads = new Map<string, Set<number>>();
+  const portalLocked = new Set<string>();
   // Consecutive physics steps each moving ball has spent under REST_SPEED.
   const slowSteps = new Map<string, number>();
 
@@ -139,6 +149,8 @@ export function createGame(options: CreateGameOptions): Game {
     delete state.players[playerId];
     physics.removeBall(playerId);
     slowSteps.delete(playerId);
+    insidePads.delete(playerId);
+    portalLocked.delete(playerId);
     emit({ type: "feed", payload: { text: `${player.name} left` }, audience: everyone });
     return { ok: true };
   }
@@ -152,7 +164,8 @@ export function createGame(options: CreateGameOptions): Game {
     // Ticket 05 adds the phase check; Freeze (15) and Ball Grab (10) add theirs here.
     if (!player.ball.atRest) return { ok: false, reason: "ball_moving" };
 
-    const speed = clamp(power, 0, 1) * MAX_SHOT_SPEED;
+    const from = surfaces.at(player.ball);
+    const speed = clamp(power, 0, 1) * MAX_SHOT_SPEED * shotPowerFactor(from);
     const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
     physics.setVelocity(playerId, velocity);
     player.ball.vx = velocity.x;
@@ -161,6 +174,66 @@ export function createGame(options: CreateGameOptions): Game {
     slowSteps.set(playerId, 0);
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
     return { ok: true };
+  }
+
+  /** Water or Void: +1 Stroke and back to the Rest Spot, at rest. */
+  function sinkBall(player: PlayerState, at: Vec2): void {
+    const ball = player.ball;
+    const kind = surfaces.at(at);
+    emit({ type: "fx", payload: { kind: kind === "void" ? "void" : "splash", x: at.x, y: at.y }, audience: everyone });
+    player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
+    physics.teleport(player.id, ball.restSpot);
+    ball.x = ball.restSpot.x;
+    ball.y = ball.restSpot.y;
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.atRest = true;
+    slowSteps.set(player.id, 0);
+    insidePads.delete(player.id);
+    portalLocked.delete(player.id);
+    emit({
+      type: "feed",
+      payload: { text: `${player.name} ${kind === "void" ? "fell into the void" : "landed in the water"} (+1)` },
+      audience: everyone,
+    });
+  }
+
+  /** Boost Pads push once per entry; Teleporters move the ball once until it leaves them. */
+  function applyPadsAndPortals(id: string, ball: PlayerState["ball"]): void {
+    const hole = currentHole();
+    const inside = insidePads.get(id) ?? new Set<number>();
+    insidePads.set(id, inside);
+    hole.boostPads.forEach((pad, i) => {
+      const now = pointInPolygon(ball, pad.polygon);
+      if (now && !inside.has(i)) {
+        const push = BOOST_IMPULSE * pad.strength;
+        physics.addVelocity(id, { x: Math.cos(pad.angle) * push, y: Math.sin(pad.angle) * push });
+        const m = physics.motion(id);
+        ball.vx = m.vx;
+        ball.vy = m.vy;
+        emit({ type: "fx", payload: { kind: "boost", x: ball.x, y: ball.y }, audience: everyone });
+      }
+      if (now) inside.add(i);
+      else inside.delete(i);
+    });
+
+    let touching: { from: Vec2; to: Vec2 } | null = null;
+    for (const pair of hole.teleporters) {
+      if (Math.hypot(ball.x - pair.a.x, ball.y - pair.a.y) <= pair.radius) touching = { from: pair.a, to: pair.b };
+      else if (Math.hypot(ball.x - pair.b.x, ball.y - pair.b.y) <= pair.radius) touching = { from: pair.b, to: pair.a };
+      if (touching) break;
+    }
+    if (!touching) {
+      portalLocked.delete(id);
+    } else if (!portalLocked.has(id)) {
+      const m = physics.motion(id);
+      emit({ type: "fx", payload: { kind: "teleport", x: touching.from.x, y: touching.from.y }, audience: everyone });
+      physics.teleport(id, touching.to, { x: m.vx, y: m.vy });
+      ball.x = touching.to.x;
+      ball.y = touching.to.y;
+      portalLocked.add(id);
+      emit({ type: "fx", payload: { kind: "teleport", x: touching.to.x, y: touching.to.y }, audience: everyone });
+    }
   }
 
   /** One fixed 60 Hz step: move every ball, then apply the rest rule. */
@@ -175,7 +248,15 @@ export function createGame(options: CreateGameOptions): Game {
       ball.y = motion.y;
       ball.vx = motion.vx;
       ball.vy = motion.vy;
-      const speed = Math.hypot(motion.vx, motion.vy);
+
+      if (!ball.atRest) {
+        if (isHazard(surfaces.at(ball))) {
+          sinkBall(player, motion);
+          continue;
+        }
+        applyPadsAndPortals(id, ball);
+      }
+      const speed = Math.hypot(ball.vx, ball.vy);
 
       if (ball.atRest) {
         // Something knocked a resting ball (another ball, later an Item): it is moving again.

@@ -1,5 +1,5 @@
 import type { Room } from "@colyseus/sdk";
-import { BALL_RADIUS, type BallState, type HoleMessage, type ShootMessage } from "@troll-golf/shared";
+import { BALL_RADIUS, type BallState, type FxMessage, type HoleMessage, type ShootMessage, type SurfaceKind } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 
 /** The decoded synced state, as the client reads it. Mirrors RoomState with Map-like players. */
@@ -21,6 +21,8 @@ export interface HoleSceneData {
   room: Room;
   /** The latest Hole layout the server sent, or null before it arrives. */
   hole: () => HoleMessage | null;
+  /** Hands over the one-shot effects received since the last call. */
+  takeFx: () => FxMessage[];
   /** Called every frame with the local Player's Strokes on this Hole. */
   onStrokes: (strokes: number) => void;
 }
@@ -50,6 +52,16 @@ const COLORS = {
   tee: 0xd8f0dc,
 };
 
+/** Fill and detail colour of each non-Fairway surface. */
+const SURFACE_STYLE: Record<SurfaceKind, { fill: number; detail: number }> = {
+  fairway: { fill: 0x2f8f46, detail: 0x2f8f46 },
+  rough: { fill: 0x1f6a31, detail: 0x144d22 },
+  sand: { fill: 0xe3cf8f, detail: 0xc2aa62 },
+  ice: { fill: 0xbfe9f7, detail: 0xffffff },
+  water: { fill: 0x2a6fd6, detail: 0x7fb4ff },
+  void: { fill: 0x050509, detail: 0x5b2a8c },
+};
+
 /**
  * The Hole being played: walls, Cup, Tee and every ball, plus the slingshot
  * input, camera follow and the Tab overview. It only renders synced state and
@@ -58,6 +70,7 @@ const COLORS = {
 export class HoleScene extends Phaser.Scene {
   private room!: Room;
   private holeSource!: () => HoleMessage | null;
+  private takeFx!: () => FxMessage[];
   private onStrokes!: (strokes: number) => void;
 
   private drawnHole: HoleMessage | null = null;
@@ -78,6 +91,7 @@ export class HoleScene extends Phaser.Scene {
   init(data: HoleSceneData): void {
     this.room = data.room;
     this.holeSource = data.hole;
+    this.takeFx = data.takeFx;
     this.onStrokes = data.onStrokes;
   }
 
@@ -122,6 +136,7 @@ export class HoleScene extends Phaser.Scene {
     if (hole && hole !== this.drawnHole) this.drawHole(hole);
     if (!this.drawnHole) return;
 
+    for (const fx of this.takeFx()) this.playFx(fx);
     this.renderBalls();
     // A shot can only start from a ball at rest; drop the aim if it got knocked.
     if (this.aimPoint && !this.myBall()?.atRest) this.aimPoint = null;
@@ -138,6 +153,13 @@ export class HoleScene extends Phaser.Scene {
     const g = this.course.clear();
     g.fillStyle(COLORS.fairway).fillRect(0, 0, hole.width, hole.height);
 
+    for (const zone of hole.surfaces) this.drawZone(g, zone.kind, zone.polygon);
+    for (const pad of hole.boostPads) this.drawBoostPad(g, pad.polygon, pad.angle);
+    for (const pair of hole.teleporters) {
+      this.drawPortal(g, pair.a.x, pair.a.y, pair.radius);
+      this.drawPortal(g, pair.b.x, pair.b.y, pair.radius);
+    }
+
     g.fillStyle(COLORS.tee).fillRect(hole.tee.x - 12, hole.tee.y - 12, 24, 24);
     g.fillStyle(COLORS.fairway).fillRect(hole.tee.x - 10, hole.tee.y - 10, 20, 20);
 
@@ -153,6 +175,71 @@ export class HoleScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, hole.width, hole.height);
     this.camCenter.set(hole.tee.x, hole.tee.y);
+  }
+
+  private drawZone(g: Phaser.GameObjects.Graphics, kind: SurfaceKind, polygon: { x: number; y: number }[]): void {
+    const style = SURFACE_STYLE[kind];
+    const points = polygon.map((p) => new Phaser.Math.Vector2(p.x, p.y));
+    g.fillStyle(style.fill).fillPoints(points, true);
+    const xs = polygon.map((p) => p.x);
+    const ys = polygon.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    // Texture inside the zone's bounds (deterministic, no randomness): dots, ticks, streaks, ripples.
+    g.fillStyle(style.detail, 0.8).lineStyle(1.5, style.detail, 0.8);
+    for (let y = y0 + 6; y < y1; y += 12) {
+      for (let x = x0 + 6 + ((Math.round(y / 12) % 2) * 6); x < x1; x += 12) {
+        if (!pointInPoly(x, y, polygon)) continue;
+        if (kind === "sand") g.fillCircle(x, y, 1.2);
+        else if (kind === "rough") g.lineBetween(x, y + 3, x + 1.5, y - 3);
+        else if (kind === "ice") g.lineBetween(x - 3, y + 3, x + 3, y - 3);
+        else if (kind === "water") g.lineBetween(x - 4, y, x, y - 2).lineBetween(x, y - 2, x + 4, y);
+        else if (kind === "void") g.fillCircle(x, y, 0.8);
+      }
+    }
+    g.lineStyle(2, style.detail, 1).strokePoints(points, true);
+  }
+
+  private drawBoostPad(g: Phaser.GameObjects.Graphics, polygon: { x: number; y: number }[], angle: number): void {
+    const points = polygon.map((p) => new Phaser.Math.Vector2(p.x, p.y));
+    g.fillStyle(0xf2a900).fillPoints(points, true);
+    g.lineStyle(2, 0x7a5200).strokePoints(points, true);
+    const cx = polygon.reduce((a, p) => a + p.x, 0) / polygon.length;
+    const cy = polygon.reduce((a, p) => a + p.y, 0) / polygon.length;
+    const [dx, dy] = [Math.cos(angle), Math.sin(angle)];
+    const [nx, ny] = [-dy, dx];
+    g.lineStyle(3, 0xfff3b0);
+    for (const o of [-8, 8]) {
+      const [bx, by] = [cx + dx * o, cy + dy * o];
+      g.lineBetween(bx - dx * 6 + nx * 8, by - dy * 6 + ny * 8, bx + dx * 6, by + dy * 6);
+      g.lineBetween(bx - dx * 6 - nx * 8, by - dy * 6 - ny * 8, bx + dx * 6, by + dy * 6);
+    }
+  }
+
+  private drawPortal(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number): void {
+    g.fillStyle(0x2b0f4d).fillCircle(x, y, radius);
+    g.lineStyle(3, 0xc77dff).strokeCircle(x, y, radius);
+    g.lineStyle(2, 0xe9c7ff).strokeCircle(x, y, radius * 0.6);
+    g.lineStyle(2, 0xc77dff).strokeCircle(x, y, radius * 0.25);
+  }
+
+  /** Short expanding ring and droplets at a point. */
+  private playFx(fx: FxMessage): void {
+    const colour = { splash: 0xcfe6ff, void: 0x8e44ad, boost: 0xffe066, teleport: 0xe9c7ff }[fx.kind];
+    const ring = this.add.circle(fx.x, fx.y, 4).setStrokeStyle(2, colour).setDepth(8);
+    this.tweens.add({ targets: ring, scale: fx.kind === "splash" ? 5 : 3, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
+    if (fx.kind !== "splash") return;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const drop = this.add.circle(fx.x, fx.y, 2, colour).setDepth(8);
+      this.tweens.add({
+        targets: drop,
+        x: fx.x + Math.cos(a) * 22,
+        y: fx.y + Math.sin(a) * 22 - 6,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => drop.destroy(),
+      });
+    }
   }
 
   private renderBalls(): void {
@@ -255,4 +342,14 @@ export class HoleScene extends Phaser.Scene {
   private worldPoint(pointer: Phaser.Input.Pointer): Phaser.Math.Vector2 {
     return this.cameras.main.getWorldPoint(pointer.x, pointer.y);
   }
+}
+
+function pointInPoly(x: number, y: number, polygon: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i]!;
+    const b = polygon[j]!;
+    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }

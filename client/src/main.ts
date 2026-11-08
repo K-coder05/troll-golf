@@ -2,7 +2,7 @@ import type { Room } from "@colyseus/sdk";
 import {
   isValidRoomCode,
   normalizeRoomCode,
-  type FeedMessage,
+  type FeedMessage, type FxMessage,
   type HoleMessage,
   type JoinOptions,
 } from "@troll-golf/shared";
@@ -70,6 +70,8 @@ function startGame(room: Room): void {
   // Register handlers right away: the server sends the Hole as soon as we join.
   let hole: HoleMessage | null = null;
   room.onMessage("hole", (message: HoleMessage) => (hole = message));
+  const pendingFx: FxMessage[] = [];
+  room.onMessage("fx", (message: FxMessage) => pendingFx.push(message));
   room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
 
   const playerCount = $("player-count");
@@ -86,6 +88,7 @@ function startGame(room: Room): void {
   const sceneData: HoleSceneData = {
     room,
     hole: () => hole,
+    takeFx: () => pendingFx.splice(0),
     onStrokes: (n) => {
       const text = `${n} stroke${n === 1 ? "" : "s"}`;
       if (strokesText.textContent !== text) strokesText.textContent = text;

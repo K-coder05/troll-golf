@@ -52,8 +52,16 @@ export interface HoleMessage {
   hole: HoleData;
 }
 
+/** A one-shot visual effect at a point of the Hole. Cosmetic: carries no secrets. */
+export interface FxMessage {
+  kind: "splash" | "void" | "boost" | "teleport";
+  x: number;
+  y: number;
+}
+
 export interface ServerMessages {
   feed: FeedMessage;
+  fx: FxMessage;
   hole: HoleMessage;
 }
 
