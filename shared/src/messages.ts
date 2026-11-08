@@ -72,9 +72,10 @@ export interface HoleMessage {
 /**
  * A one-shot visual effect at a point of the Hole. Cosmetic: carries no secrets.
  * `holeOut`: a ball dropped into the Cup. `lipOut`: a ball rolled over the Cup too fast.
+ * `grab`: the Golf Gods picking a ball up or putting it down (Loud Ball Grab only).
  */
 export interface FxMessage {
-  kind: "splash" | "void" | "boost" | "teleport" | "holeOut" | "lipOut";
+  kind: "splash" | "void" | "boost" | "teleport" | "holeOut" | "lipOut" | "grab";
   x: number;
   y: number;
 }

@@ -1,4 +1,5 @@
-import type { AdminPowerId, AdminPowerParams, Phase } from "@troll-golf/shared";
+import type { AdminMode, AdminPowerId, AdminPowerParams, Phase } from "@troll-golf/shared";
+import type { AdminHit, AdminHost } from "../../adminHost";
 
 /** A Player as the admin console shows them. */
 export interface PlayerView {
@@ -16,6 +17,12 @@ export interface PanelContext {
   players(): PlayerView[];
   phase(): Phase;
   holeIndex(): number;
+  /** The game view and room, for powers that act on the course directly (Ball Grab). */
+  host: AdminHost;
+  /** The mode the Caps Lock toggle is on right now. */
+  mode(): AdminMode;
+  /** A Player the radial menu was opened on: panels preselect them, once. */
+  takePreselected(): string | null;
   /** Use the power, in the mode the Caps Lock toggle is on right now. */
   use<K extends AdminPowerId>(power: K, params: AdminPowerParams[K]): void;
 }
@@ -32,6 +39,11 @@ export interface AdminPowerPanel {
   icon: string;
   /** What the radial menu can offer this power on. */
   appliesTo: readonly ("ball" | "cup" | "terrain")[];
+  /**
+   * Chosen from the right-click radial menu on `hit`. Without this, choosing
+   * the power opens its console panel (with the clicked Player preselected).
+   */
+  onRadial?(ctx: PanelContext, hit: AdminHit): void;
   /** Build the panel's controls; called every time the panel is shown. */
   render(ctx: PanelContext): HTMLElement;
 }

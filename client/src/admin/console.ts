@@ -21,7 +21,7 @@ interface SyncedState {
  * Stealth/Loud toggle: on means Loud. Nothing shows on screen while it's
  * closed, so a screen share gives nothing away.
  */
-export function startConsole(host: AdminHost): void {
+export function startConsole(host: AdminHost): ConsoleController {
   const { room } = host;
   injectStyle();
 
@@ -56,7 +56,15 @@ export function startConsole(host: AdminHost): void {
     });
     return out;
   };
+  let preselected: string | null = null;
   const ctx: PanelContext = {
+    host,
+    mode: () => mode,
+    takePreselected() {
+      const id = preselected;
+      preselected = null;
+      return id;
+    },
     myId: room.sessionId,
     players,
     phase: () => (room.state as unknown as SyncedState).phase,
@@ -182,6 +190,23 @@ export function startConsole(host: AdminHost): void {
     true,
   );
   renderMode();
+  return {
+    ctx,
+    mode: () => mode,
+    openPanel(panel, playerId) {
+      preselected = playerId ?? null;
+      setOpen(true);
+      select(panel);
+    },
+  };
+}
+
+/** What the radial menu needs from the console. */
+export interface ConsoleController {
+  ctx: PanelContext;
+  mode(): AdminMode;
+  /** Open the console on a power's panel, optionally with a Player preselected. */
+  openPanel(panel: AdminPowerPanel, playerId?: string): void;
 }
 
 function loadHotbar(): string[] {

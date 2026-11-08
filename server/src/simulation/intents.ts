@@ -65,6 +65,10 @@ export type IntentRejection =
   /** No such Admin Power. */
   | "unknown_power"
   /** An Admin Power aimed at a Player who isn't in the room. */
-  | "unknown_target";
+  | "unknown_target"
+  /** Ball Grab on a ball that isn't in play (Holed Out, disconnected, a waiting late joiner) or outside the playing phase. */
+  | "not_in_play"
+  /** Ball Grab move or release with no ball held. */
+  | "not_holding";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

@@ -1,8 +1,10 @@
 import {
   BALL_RADIUS,
   MAX_PLAYERS,
+  MAX_THROW_SPEED,
   REST_DURATION_MS,
   REST_SPEED,
+  type AdminMode,
   type CourseData,
   type CourseSummary,
   type GameSettings,
@@ -10,7 +12,7 @@ import {
   type RoomState,
   type Vec2,
 } from "@troll-golf/shared";
-import { createAdminPowers, type AdminLogEntry } from "./admin";
+import { createAdminPowers, type AdminBallControl, type AdminLogEntry } from "./admin";
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
@@ -189,7 +191,124 @@ export function createGame(options: CreateGameOptions): Game {
 
   const emit = (event: GameEvent) => events.push(event);
   // The secret Admin and the Admin Power pipeline. Server-only: nothing in here reaches RoomState.
-  const admin = createAdminPowers({ registry: ADMIN_POWERS, clock, state, emit, updateStandings: () => updateStandings() });
+  const admin = createAdminPowers({
+    registry: ADMIN_POWERS,
+    clock,
+    state,
+    emit,
+    updateStandings: () => updateStandings(),
+    balls: ballControl(),
+  });
+
+  // ---- Ball Grab: the Admin holds one ball at a time ----
+
+  /**
+   * The ball the Admin is holding. It has no physics body (nothing touches it),
+   * is flagged as moving so it can't be shot, and follows the Admin's drag.
+   * Only balls in play can be held: a Holed-Out, disconnected or waiting
+   * late-joiner ball has no body to take. Server-only, never synced.
+   */
+  let held: { id: string; mode: AdminMode; lastMoveAt: number } | null = null;
+
+  /** Whether a ball centre may be here: inside the Hole and not inside a wall. */
+  function legalBallSpot(p: Vec2): boolean {
+    const { width, height, walls } = currentHole();
+    return (
+      p.x >= BALL_RADIUS && p.y >= BALL_RADIUS && p.x <= width - BALL_RADIUS && p.y <= height - BALL_RADIUS &&
+      !walls.some((w) => pointInPolygon(p, w))
+    );
+  }
+
+  function ballControl(): AdminBallControl {
+    return {
+      get held() {
+        return held ? { id: held.id, mode: held.mode } : null;
+      },
+      grab(id, mode) {
+        const player = state.players[id];
+        if (!player) return { ok: false, reason: "unknown_target" };
+        if (state.phase !== "playing" || !hasBallInPlay(player) || (!physics.hasBall(id) && held?.id !== id)) {
+          return { ok: false, reason: "not_in_play" };
+        }
+        if (held && held.id !== id) putDown(held.id, state.players[held.id]!.ball, undefined);
+        if (held?.id === id) {
+          held.mode = mode;
+        } else {
+          removeBody(player);
+          held = { id, mode, lastMoveAt: clock.now() };
+        }
+        player.ball.atRest = false;
+        return { ok: true, name: player.name, at: { x: player.ball.x, y: player.ball.y } };
+      },
+      move(x, y) {
+        if (!held) return false;
+        const ball = state.players[held.id]!.ball;
+        const to = { x, y };
+        if (!legalBallSpot(to)) return true; // dragged over a wall or off the map: the ball stays at the last legal spot
+        const now = clock.now();
+        const dt = Math.max(now - held.lastMoveAt, 1) / 1000;
+        held.lastMoveAt = now;
+        // The drag's velocity, so the held ball reads as a moving one.
+        const limit = MAX_THROW_SPEED;
+        const vx = clamp((to.x - ball.x) / dt, -limit, limit);
+        const vy = clamp((to.y - ball.y) / dt, -limit, limit);
+        ball.x = to.x;
+        ball.y = to.y;
+        ball.vx = vx;
+        ball.vy = vy;
+        return true;
+      },
+      release(x, y, velocity) {
+        if (!held) return false;
+        const id = held.id;
+        const ball = state.players[id]!.ball;
+        if (legalBallSpot({ x, y })) {
+          ball.x = x;
+          ball.y = y;
+        }
+        putDown(id, ball, velocity);
+        return true;
+      },
+    };
+  }
+
+  /**
+   * Back under the normal rules: the ball gets a body where it is, at rest or
+   * thrown, and is checked at once against the Cup and hazards (a ball placed
+   * at rest never moves, so the per-step checks wouldn't catch it).
+   */
+  function putDown(id: string, ball: PlayerState["ball"], velocity: Vec2 | undefined): void {
+    held = null;
+    const player = state.players[id]!;
+    const at = { x: ball.x, y: ball.y };
+    physics.addBall(id, at);
+    slowSteps.set(id, 0);
+    const speed = velocity ? Math.hypot(velocity.x, velocity.y) : 0;
+    if (velocity && speed >= REST_SPEED) {
+      physics.setVelocity(id, velocity);
+      ball.vx = velocity.x;
+      ball.vy = velocity.y;
+      ball.atRest = false;
+    } else {
+      ball.vx = 0;
+      ball.vy = 0;
+      ball.atRest = true;
+      // Water and Void aren't a place to rest: the penalty returns it to the old Rest Spot.
+      if (!isHazard(surfaces.at(at))) ball.restSpot = at;
+    }
+    if (checkCup(player)) return;
+    if (isHazard(surfaces.at(at))) sinkBall(player, at);
+  }
+
+  /** The Admin lets go without choosing: the held ball stays where it is, at rest (or is simply forgotten if it has no body to return to). */
+  function dropHeld(): void {
+    if (!held) return;
+    const player = state.players[held.id];
+    const id = held.id;
+    if (player && state.phase === "playing" && hasBallInPlay(player)) putDown(id, player.ball, undefined);
+    else if (player) player.ball.atRest = true;
+    held = null;
+  }
 
   function newPhysicsWorld(): PhysicsWorld {
     return new PhysicsWorld({
@@ -312,6 +431,7 @@ export function createGame(options: CreateGameOptions): Game {
    */
   function startHole(index: number): void {
     state.holeIndex = index;
+    held = null;
     const hole = currentHole();
     surfaces = courseSurfaces(hole);
     physics = newPhysicsWorld();
@@ -344,6 +464,7 @@ export function createGame(options: CreateGameOptions): Game {
   function endHole(): void {
     const par = currentHole().par;
     const cap = par + state.settings.strokeCapOverPar;
+    dropHeld();
     for (const player of Object.values(state.players)) {
       if (player.holedOut || player.spectating) continue;
       if (physics.hasBall(player.id)) physics.stop(player.id);
@@ -499,6 +620,8 @@ export function createGame(options: CreateGameOptions): Game {
     const player = state.players[playerId];
     if (!player) return { ok: false, reason: "unknown_player" };
     if (!player.connected) return { ok: false, reason: "not_connected" };
+    // Whoever vanishes mid-grab, the held ball is let go: the Admin dropping it, or its owner leaving it frozen.
+    if (admin.isAdmin(playerId) || held?.id === playerId) dropHeld();
     player.connected = false;
     if (physics.hasBall(playerId)) removeBody(player);
     updateStandings();
@@ -535,6 +658,7 @@ export function createGame(options: CreateGameOptions): Game {
     const player = state.players[playerId];
     if (!player) return { ok: false, reason: "unknown_player" };
     if (gone.has(playerId)) return { ok: false, reason: "left_game" };
+    if (admin.isAdmin(playerId) || held?.id === playerId) dropHeld();
     if (state.phase === "lobby") {
       delete state.players[playerId];
       joinOrder.delete(playerId);
@@ -570,8 +694,8 @@ export function createGame(options: CreateGameOptions): Game {
     if (!player.connected) return { ok: false, reason: "not_connected" };
     if (player.spectating) return { ok: false, reason: "spectating" };
     if (player.holedOut) return { ok: false, reason: "holed_out" };
-    // Freeze (15) and Ball Grab (10) add their checks here.
-    if (!player.ball.atRest) return { ok: false, reason: "ball_moving" };
+    // Freeze (15) adds its check here. A ball held by the Admin reads as moving.
+    if (held?.id === playerId || !player.ball.atRest) return { ok: false, reason: "ball_moving" };
 
     const from = surfaces.at(player.ball);
     const speed = clamp(power, 0, 1) * MAX_SHOT_SPEED * shotPowerFactor(from);

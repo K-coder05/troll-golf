@@ -5,7 +5,9 @@
  */
 import type { AdminBundle } from "../adminHost";
 import { startConsole } from "./console";
+import { startRadialMenu } from "./radialMenu";
 
 export const mount: AdminBundle["mount"] = (host) => {
-  startConsole(host);
+  const console = startConsole(host);
+  startRadialMenu(host, console);
 };

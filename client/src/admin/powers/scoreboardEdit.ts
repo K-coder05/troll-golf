@@ -15,6 +15,8 @@ export const scoreboardEditPanel: AdminPowerPanel = {
       const option = new Option(`${p.name}${p.id === ctx.myId ? " (you)" : ""}`, p.id);
       target.add(option);
     }
+    const preselected = ctx.takePreselected();
+    if (preselected) target.value = preselected;
     const hole = document.createElement("select");
     const current = ctx.holeIndex();
     for (let i = current; i >= 0; i--) hole.add(new Option(`Hole ${i + 1}${i === current ? " (now)" : ""}`, String(i)));

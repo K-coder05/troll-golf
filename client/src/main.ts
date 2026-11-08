@@ -18,6 +18,9 @@ import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 import { startHud, type HudView } from "./ui/hud";
 import { startLobby } from "./ui/lobby";
 
+// The Hole scene, once it's up; the admin bundle asks it for world coordinates and hit-tests.
+let holeScene: HoleScene | null = null;
+
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("join-form");
 const nameInput = $<HTMLInputElement>("name");
@@ -192,7 +195,9 @@ function enterRoom(room: Room): void {
     scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
     scene: [],
     callbacks: {
-      postBoot: (game) => game.scene.add("hole", HoleScene, true, sceneData),
+      postBoot: (game) => {
+        holeScene = game.scene.add("hole", HoleScene, true, sceneData) as HoleScene;
+      },
     },
   });
 }
@@ -215,12 +220,13 @@ function showGodsBanner(message: BannerMessage): void {
 // ---- Extra code the server hands this session (once per page) ----
 
 let adminBundleLoaded = false;
+
 async function loadAdminBundle(room: Room, message: AdminBundleMessage): Promise<void> {
   if (adminBundleLoaded) return;
   adminBundleLoaded = true;
   try {
     const bundle = (await import(/* @vite-ignore */ serverResource(message.path))) as AdminBundle;
-    bundle.mount({ room });
+    bundle.mount({ room, view: () => holeScene?.adminView() ?? null });
   } catch (err) {
     adminBundleLoaded = false;
     console.error(err);

@@ -5,6 +5,7 @@ import {
   type AdminPowerParams,
   type Phase,
   type RoomState,
+  type Vec2,
 } from "@troll-golf/shared";
 import type { Clock } from "./clock";
 import { everyone, toAdmin, type GameEvent } from "./events";
@@ -28,6 +29,25 @@ import type { IntentRejection, IntentResult } from "./intents";
  */
 
 /**
+ * The Admin's hold on a ball, for Ball Grab. A held ball is out of the physics
+ * world (nothing touches it, it can't be shot) and sits wherever the Admin
+ * drags it; releasing it puts it back under the normal rules.
+ */
+export interface AdminBallControl {
+  /** The ball currently held, and the mode it was grabbed in. */
+  readonly held: { id: string; mode: AdminMode } | null;
+  /** Pick up a ball in play. Another ball already held is put down at rest first. */
+  grab(id: string, mode: AdminMode): { ok: true; name: string; at: Vec2 } | { ok: false; reason: IntentRejection };
+  /** Move the held ball (kept inside the Hole and out of walls). False if nothing is held. */
+  move(x: number, y: number): boolean;
+  /**
+   * Put the held ball down: at rest, or thrown with a velocity (px/s). It then
+   * Holes Out, sinks or rolls like any ball. False if nothing is held.
+   */
+  release(x: number, y: number, velocity?: Vec2): boolean;
+}
+
+/**
  * What a handler may touch. Deliberately small; later Admin Powers add the
  * hooks they need (physics, surfaces, the Cup, Items...) in game.ts, where the
  * context is built.
@@ -41,6 +61,8 @@ export interface AdminPowerContext {
   emit(event: GameEvent): void;
   /** Recompute Standing and the Leader after scores or positions change. */
   updateStandings(): void;
+  /** Hold, move and release balls (Ball Grab). */
+  readonly balls: AdminBallControl;
 }
 
 export type AdminPowerOutcome =
@@ -56,6 +78,11 @@ export type AdminPowerOutcome =
       summary: string;
       /** Loud only: the banner's detail line, e.g. "Ben: +2 Strokes". It must not name the Admin. */
       bannerDetail?: string;
+      /**
+       * A continuation of an earlier use (a Ball Grab drag or release): not
+       * logged again, no banner, no confirmation to the Admin.
+       */
+      quiet?: boolean;
     }
   | { ok: false; reason: IntentRejection };
 
@@ -122,6 +149,7 @@ export interface AdminPowersOptions {
   state: RoomState;
   emit(event: GameEvent): void;
   updateStandings(): void;
+  balls: AdminBallControl;
 }
 
 export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
@@ -173,9 +201,11 @@ export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
         now: () => clock.now(),
         emit,
         updateStandings: options.updateStandings,
+        balls: options.balls,
       };
       const outcome = handler.use(ctx, params as never, mode);
       if (!outcome.ok) return reject(handler.id, outcome.reason);
+      if (outcome.quiet) return { ok: true };
 
       const entry: AdminLogEntry = {
         at: clock.now(),

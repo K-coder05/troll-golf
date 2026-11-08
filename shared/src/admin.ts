@@ -25,7 +25,23 @@ export interface AdminPowerParams {
     /** Which Hole's Strokes to edit (0-based, up to the current one). Defaults to the current Hole. */
     holeIndex?: number;
   };
+  /**
+   * Ball Grab: hold any ball in play and drag it anywhere, then let go. One
+   * grab is a `grab`, any number of `move`s, then a `release`. Only the grab
+   * is logged (one use per grab) and shows the Loud banner; `move` and
+   * `release` carry on the same hold.
+   * - release without a velocity leaves the ball at rest where it was let go;
+   *   with one, it is thrown (speed capped at MAX_THROW_SPEED).
+   * - after release the normal rules apply: Cup, Water, Void, rest.
+   */
+  ballGrab:
+    | { action: "grab"; targetId: string }
+    | { action: "move"; x: number; y: number }
+    | { action: "release"; x: number; y: number; vx?: number; vy?: number };
 }
+
+/** The fastest a released Ball Grab can throw a ball, px/s (a full-power shot is 1100). */
+export const MAX_THROW_SPEED = 1500;
 
 export type AdminPowerId = keyof AdminPowerParams;
 

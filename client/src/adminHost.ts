@@ -13,6 +13,30 @@ import type { Room } from "@colyseus/sdk";
 export interface AdminHost {
   /** The joined room: the admin UI sends `admin` messages and listens to `adminResult` on it. */
   room: Room;
+  /** The game view (world coordinates, what is under a point), or null before the Hole scene is up. */
+  view(): AdminView | null;
+}
+
+/** What is under a point of the Hole, for the right-click radial menu. */
+export type AdminHit =
+  | { kind: "ball"; id: string; name: string }
+  | { kind: "cup" }
+  | { kind: "terrain" };
+
+/**
+ * What the admin UI may ask of the public game view. Generic geometry only
+ * (nothing here knows about Admin Powers), so the public client stays free of
+ * admin code.
+ */
+export interface AdminView {
+  /** The game canvas: right-clicks on it open the radial menu. */
+  canvas: HTMLCanvasElement;
+  /** A pointer position (viewport px) as a point of the Hole (world px). */
+  worldAt(clientX: number, clientY: number): { x: number; y: number };
+  /** What is at a world point: a ball in play, the Cup, or plain terrain. */
+  hitTest(world: { x: number; y: number }): AdminHit;
+  /** Stop the camera following the ball (while dragging your own ball it would run away from the pointer). */
+  holdCamera(hold: boolean): void;
 }
 
 /** What the admin bundle exports. */

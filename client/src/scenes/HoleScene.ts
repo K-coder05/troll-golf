@@ -13,6 +13,7 @@ import {
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 import { SnapshotBuffer, type Point } from "../net/interpolation";
+import type { AdminHit, AdminView } from "../adminHost";
 import type { HudView } from "../ui/hud";
 
 /** The decoded synced state, as the client reads it. Mirrors RoomState with Map-like players. */
@@ -117,6 +118,7 @@ export class HoleScene extends Phaser.Scene {
   /** Pointer world position while aiming, or null when not aiming. */
   private aimPoint: Phaser.Math.Vector2 | null = null;
   private camCenter = new Phaser.Math.Vector2(0, 0);
+  private cameraHeld = false;
 
   constructor() {
     super("hole");
@@ -374,6 +376,7 @@ export class HoleScene extends Phaser.Scene {
       teleport: 0xe9c7ff,
       holeOut: 0xffd24d,
       lipOut: 0xffffff,
+      grab: 0xfff1a8,
     }[fx.kind];
     const ring = this.add.circle(fx.x, fx.y, 4).setStrokeStyle(2, colour).setDepth(8);
     const scale = fx.kind === "splash" || fx.kind === "holeOut" ? 5 : 3;
@@ -508,11 +511,49 @@ export class HoleScene extends Phaser.Scene {
     cam.setZoom(Phaser.Math.Linear(cam.zoom, overview ? fitZoom : followZoom, 0.15));
 
     const target = overview ? { x: hole.width / 2, y: hole.height / 2 } : this.balls.get(this.followedId())?.circle;
-    if (target) {
+    if (target && !this.cameraHeld) {
       this.camCenter.x = Phaser.Math.Linear(this.camCenter.x, target.x, 0.12);
       this.camCenter.y = Phaser.Math.Linear(this.camCenter.y, target.y, 0.12);
     }
     cam.centerOn(this.camCenter.x, this.camCenter.y);
+  }
+
+  /**
+   * Generic geometry for the admin bundle's radial menu and ball dragging
+   * (src/adminHost.ts). Nothing here knows about Admin Powers.
+   */
+  adminView(): AdminView {
+    const canvas = this.game.canvas;
+    return {
+      canvas,
+      worldAt: (clientX, clientY) => {
+        const rect = canvas.getBoundingClientRect();
+        const p = this.cameras.main.getWorldPoint(
+          ((clientX - rect.left) * this.scale.width) / rect.width,
+          ((clientY - rect.top) * this.scale.height) / rect.height,
+        );
+        return { x: p.x, y: p.y };
+      },
+      hitTest: (world): AdminHit => {
+        const state = this.syncedState();
+        let best: AdminHit | null = null;
+        let bestDistance = BALL_RADIUS * 2;
+        state?.players.forEach((player, id) => {
+          const sprite = this.balls.get(id);
+          if (!onCourse(player) || !sprite) return;
+          const d = Phaser.Math.Distance.Between(world.x, world.y, sprite.circle.x, sprite.circle.y);
+          if (d < bestDistance) {
+            best = { kind: "ball", id, name: player.name };
+            bestDistance = d;
+          }
+        });
+        if (best) return best;
+        const cup = state?.cup;
+        if (cup && Phaser.Math.Distance.Between(world.x, world.y, cup.x, cup.y) <= cup.radius + 6) return { kind: "cup" };
+        return { kind: "terrain" };
+      },
+      holdCamera: (hold) => (this.cameraHeld = hold),
+    };
   }
 
   private worldPoint(pointer: Phaser.Input.Pointer): Phaser.Math.Vector2 {

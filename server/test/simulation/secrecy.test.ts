@@ -39,11 +39,15 @@ function playScriptedGame(adminId: Id): Observed {
     observed.snapshots.push(JSON.stringify(t.state));
     return visible;
   };
-  const use = <K extends AdminPowerId>(power: K, mode: AdminMode, params: AdminPowerParams[K] & { targetId: string }) => {
+  const use = <K extends AdminPowerId>(power: K, mode: AdminMode, params: AdminPowerParams[K], continuation = false) => {
     record();
     expect(t.adminPower(adminId, power, params, mode)).toEqual({ ok: true });
     t.advance(500);
-    observed.powerEvents.push({ power, mode, targetId: params.targetId, events: record() });
+    const events = record();
+    // A continuation (a Ball Grab drag or release) is part of the use that started it.
+    if (!continuation) {
+      observed.powerEvents.push({ power, mode, targetId: (params as { targetId?: string }).targetId ?? "", events });
+    }
   };
 
   // Everyone joins the same way; only the adapter knows who brought the secret.
@@ -74,12 +78,21 @@ function playScriptedGame(adminId: Id): Observed {
 
 /** Every Admin Power, Stealth and Loud, on every kind of target (the Admin included). */
 function useAdminPowers(
-  use: <K extends AdminPowerId>(power: K, mode: AdminMode, params: AdminPowerParams[K] & { targetId: string }) => void,
+  use: <K extends AdminPowerId>(power: K, mode: AdminMode, params: AdminPowerParams[K], continuation?: boolean) => void,
 ): void {
   for (const mode of ["stealth", "loud"] as const) {
     use("scoreboardEdit", mode, { targetId: "jay", delta: 2 });
     use("scoreboardEdit", mode, { targetId: "ben", delta: -1 });
     use("scoreboardEdit", mode, { targetId: "maya", delta: 1 });
+  }
+  // Ball Grab: pick a ball up, drag it, put it down at rest, on others and on the Admin's own ball.
+  for (const mode of ["stealth", "loud"] as const) {
+    for (const [targetId, x, y] of [["jay", 300, 200], ["ben", 400, 220], ["maya", 500, 240]] as const) {
+      use("ballGrab", mode, { action: "grab", targetId });
+      use("ballGrab", mode, { action: "move", x: x - 40, y }, true);
+      use("ballGrab", mode, { action: "move", x, y }, true);
+      use("ballGrab", mode, { action: "release", x, y }, true);
+    }
   }
 }
 
