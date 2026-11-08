@@ -1,7 +1,10 @@
 import {
   BALL_RADIUS,
+  distanceToSegmentSq,
   ITEM_CATALOGUE,
   ITEM_TUNING,
+  MAGNET_ACCEL,
+  MAGNET_RANGE,
   MAX_PLAYERS,
   MAX_THROW_SPEED,
   NUKE_BLAST_MIN_SPEED,
@@ -18,11 +21,15 @@ import {
   type ItemCatalogue,
   type ItemId,
   type ItemTuning,
+  type MagnetPolarity,
   type NukeAftermath,
   type PaintStrokeEdit,
   type PlayerState,
   type RoomState,
+  type TerrainEdit,
   type Vec2,
+  type WallEdit,
+  wallTouches,
   XRAY_AIM_STALE_MS,
   XRAY_INTERVAL_MS,
 } from "@troll-golf/shared";
@@ -30,6 +37,9 @@ import {
   createAdminPowers,
   type AdminBallControl,
   type AdminCupControl,
+  type AdminEffectControl,
+  type AdminMagnetControl,
+  type AdminWallControl,
   type AdminLogEntry,
   type AdminNukeControl,
   type AdminTerrainControl,
@@ -217,6 +227,9 @@ export function createGame(options: CreateGameOptions): Game {
   // The Admin's current brush stroke (Terrain Paint), by edit id; next edit id. Server-only.
   let activeStroke: number | null = null;
   let nextEditId = 1;
+  // Magnet/Repel: master switch and per-Player overrides (default: Admin attract, others repel). Server-only, reset each Hole.
+  let magnetOn = false;
+  const magnetPolarity = new Map<string, MagnetPolarity>();
   // The physics world of the current Hole, rebuilt by startHole().
   let physics = newPhysicsWorld();
   // Boost Pads / Teleporters a ball is currently inside, so each fires once per entry.
@@ -259,6 +272,9 @@ export function createGame(options: CreateGameOptions): Game {
     nukes: nukeControl(),
     cup: cupControl(),
     terrain: terrainControl(),
+    magnet: magnetControl(),
+    walls: wallControl(),
+    effects: effectControl(),
     // Defined below; only called once the game runs. None of these go through the Item Hit path.
     items: {
       give: (playerId, item) => items.give(playerId, item),
@@ -292,16 +308,7 @@ export function createGame(options: CreateGameOptions): Game {
         if (!physics.hasBall(playerId) || physics.isGhost(playerId) === ghost) return;
         physics.setCollisions(playerId, { walls: !ghost, balls: !cupGuarded.has(playerId) });
       },
-      pullToCup(playerId, accel) {
-        const ball = state.players[playerId]?.ball;
-        if (!ball || !physics.hasBall(playerId) || ball.atRest || physics.isPinned(playerId)) return;
-        const dx = state.cup.x - ball.x;
-        const dy = state.cup.y - ball.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 1) return;
-        const dv = (accel * PHYSICS_STEP_MS) / 1000;
-        physics.addVelocity(playerId, { x: (dx / dist) * dv, y: (dy / dist) * dv });
-      },
+      pullToCup: (playerId, accel) => pullBallToCup(playerId, accel),
       settle(playerId) {
         const ball = state.players[playerId]?.ball;
         if (!ball || !physics.hasBall(playerId) || held?.id === playerId) return;
@@ -407,7 +414,8 @@ export function createGame(options: CreateGameOptions): Game {
     const { width, height, walls } = currentHole();
     return (
       p.x >= BALL_RADIUS && p.y >= BALL_RADIUS && p.x <= width - BALL_RADIUS && p.y <= height - BALL_RADIUS &&
-      !walls.some((w) => pointInPolygon(p, w))
+      !walls.some((w) => pointInPolygon(p, w)) &&
+      !surfaces.edits.some((e) => e.kind === "wall" && wallTouches(e, p, BALL_RADIUS))
     );
   }
 
@@ -550,7 +558,10 @@ export function createGame(options: CreateGameOptions): Game {
   /** Whether the Cup may be centred here: inside the Hole and not inside a wall. */
   function legalCupSpot(p: Vec2): boolean {
     const { width, height, walls } = currentHole();
-    return p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height && !walls.some((w) => pointInPolygon(p, w));
+    return (
+      p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height && !walls.some((w) => pointInPolygon(p, w)) &&
+      !surfaces.edits.some((e) => e.kind === "wall" && wallTouches(e, p, state.cup.radius))
+    );
   }
 
   /** A sliding Cup backs away from the nearest ball inside its trigger distance, steering round walls and edges. */
@@ -576,6 +587,141 @@ export function createGame(options: CreateGameOptions): Game {
       cup.x = next.x;
       cup.y = next.y;
       return;
+    }
+  }
+
+  /** Add `accel` px/s^2 (negative pushes away) toward the Cup to a rolling ball's velocity for one physics step. */
+  function pullBallToCup(playerId: string, accel: number): void {
+    const ball = state.players[playerId]?.ball;
+    if (!ball || !physics.hasBall(playerId) || ball.atRest || physics.isPinned(playerId)) return;
+    const dx = state.cup.x - ball.x;
+    const dy = state.cup.y - ball.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1) return;
+    const dv = (accel * PHYSICS_STEP_MS) / 1000;
+    physics.addVelocity(playerId, { x: (dx / dist) * dv, y: (dy / dist) * dv });
+  }
+
+  // ---- Magnet/Repel ----
+
+  const magnetPolarityOf = (playerId: string): MagnetPolarity =>
+    magnetPolarity.get(playerId) ?? (playerId === admin.adminId ? "attract" : "repel");
+
+  function magnetControl(): AdminMagnetControl {
+    return {
+      setEnabled(enabled) {
+        magnetOn = enabled;
+      },
+      setPolarity(playerId, polarity) {
+        const player = state.players[playerId];
+        if (!player) return { ok: false, reason: "unknown_target" };
+        magnetPolarity.set(playerId, polarity);
+        return { ok: true, name: player.name };
+      },
+    };
+  }
+
+  /** Each physics step: rolling balls within range of the Cup curve toward it or away from it. */
+  function applyMagnet(): void {
+    if (!magnetOn) return;
+    for (const player of Object.values(state.players)) {
+      if (!physics.hasBall(player.id)) continue;
+      const polarity = magnetPolarityOf(player.id);
+      if (polarity === "off") continue;
+      if (Math.hypot(player.ball.x - state.cup.x, player.ball.y - state.cup.y) > MAGNET_RANGE) continue;
+      pullBallToCup(player.id, polarity === "attract" ? MAGNET_ACCEL : -MAGNET_ACCEL);
+    }
+  }
+
+  // ---- Invert Controls ----
+
+  function effectControl(): AdminEffectControl {
+    return {
+      invertControls(playerId, durationMs, hidden) {
+        const player = state.players[playerId];
+        if (!player) return { ok: false, reason: "unknown_target" };
+        if (!player.connected || player.holedOut || player.spectating) return { ok: false, reason: "no_ball_in_play" };
+        // Straight onto the Effects engine: no Shield, immunity, cap or chaos scaling.
+        effects.start("invertControls", { sourceId: admin.adminId ?? playerId, targetId: playerId, durationMs, scaled: false, hidden });
+        return { ok: true, name: player.name };
+      },
+    };
+  }
+
+  // ---- Spawn Wall ----
+
+  function wallControl(): AdminWallControl {
+    return {
+      spawn(rawA, rawB, thickness, durationMs) {
+        if (state.terrainEdits.length >= MAX_TERRAIN_EDITS || surfaces.pointCount + 2 > MAX_TERRAIN_POINTS) {
+          return { ok: false, reason: "terrain_full" };
+        }
+        const { width, height } = currentHole();
+        const a = { x: Math.round(clamp(rawA.x, 0, width)), y: Math.round(clamp(rawA.y, 0, height)) };
+        const b = { x: Math.round(clamp(rawB.x, 0, width)), y: Math.round(clamp(rawB.y, 0, height)) };
+        const radius = thickness / 2;
+        // Never wall the Cup in: the wall may not touch its capture circle.
+        if (distanceToSegmentSq(state.cup, a, b) < (radius + state.cup.radius) ** 2) return { ok: false, reason: "wall_blocked" };
+        const wall: WallEdit = { kind: "wall", id: nextEditId++, points: [a, b], radius, expiresAt: durationMs !== undefined ? clock.now() + durationMs : 0 };
+        surfaces.add(wall);
+        physics.addWall(wall.id, a, b, radius);
+        pushBallsClear(wall);
+        return { ok: true };
+      },
+      clear() {
+        return removeWalls((e) => e.kind === "wall");
+      },
+    };
+  }
+
+  /** Remove terrain edits matching `drop`, with the physics bodies of any walls among them. Returns how many walls went. */
+  function removeWalls(drop: (edit: TerrainEdit) => boolean): number {
+    let walls = 0;
+    for (const edit of surfaces.remove(drop)) {
+      if (edit.kind !== "wall") continue;
+      physics.removeWall(edit.id);
+      walls++;
+    }
+    return walls;
+  }
+
+  /** A freshly spawned wall may not sit on a ball: move each overlapped ball (not a ghost mid-flight) to the nearest legal spot beside it. */
+  function pushBallsClear(wall: WallEdit): void {
+    const [a, b] = wall.points;
+    for (const player of Object.values(state.players)) {
+      const id = player.id;
+      if (!physics.hasBall(id) || physics.isGhost(id) || held?.id === id) continue;
+      const ball = player.ball;
+      if (!wallTouches(wall, ball, BALL_RADIUS)) continue;
+      // Nearest point on the wall's centre line, and the way out from it (either side if the ball is dead centre).
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lengthSq = dx * dx + dy * dy;
+      const t = lengthSq === 0 ? 0 : clamp(((ball.x - a.x) * dx + (ball.y - a.y) * dy) / lengthSq, 0, 1);
+      const q = { x: a.x + t * dx, y: a.y + t * dy };
+      let ox = ball.x - q.x;
+      let oy = ball.y - q.y;
+      let length = Math.hypot(ox, oy);
+      if (length < 1e-6) {
+        const n = Math.hypot(dx, dy) || 1;
+        ox = -dy / n;
+        oy = dx / n;
+        length = 1;
+      }
+      const reach = wall.radius + BALL_RADIUS + 1;
+      let spot: Vec2 | null = null;
+      for (const side of [1, -1]) {
+        const candidate = { x: q.x + (side * ox * reach) / length, y: q.y + (side * oy * reach) / length };
+        if (legalBallSpot(candidate) && !isHazard(surfaces.at(candidate))) {
+          spot = candidate;
+          break;
+        }
+      }
+      spot ??= legalRestSpot({ x: ball.x, y: ball.y });
+      physics.teleport(id, spot, { x: ball.vx, y: ball.vy });
+      ball.x = spot.x;
+      ball.y = spot.y;
+      if (ball.atRest) ball.restSpot = { ...spot };
     }
   }
 
@@ -653,7 +799,7 @@ export function createGame(options: CreateGameOptions): Game {
   /** Edits whose time is up disappear. */
   function expireTerrain(): void {
     const now = clock.now();
-    surfaces.remove((e) => e.expiresAt > 0 && e.expiresAt <= now);
+    removeWalls((e) => e.expiresAt > 0 && e.expiresAt <= now);
   }
 
   /**
@@ -936,6 +1082,8 @@ export function createGame(options: CreateGameOptions): Game {
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
     cupSlide = null;
+    magnetOn = false;
+    magnetPolarity.clear();
     pendingLipOut.clear();
     poppedOut.clear();
     lastShots.clear();
@@ -1065,6 +1213,8 @@ export function createGame(options: CreateGameOptions): Game {
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
     cupSlide = null;
+    magnetOn = false;
+    magnetPolarity.clear();
     pendingLipOut.clear();
     poppedOut.clear();
     lastShots.clear();
@@ -1253,7 +1403,7 @@ export function createGame(options: CreateGameOptions): Game {
               kind: e.kind,
               endsAt: e.endsAt,
               sourceId: e.sourceId,
-              visible: EFFECT_DEFINITIONS[e.kind].visible,
+              visible: e.visible,
             })),
             aim: a && now - a.at <= XRAY_AIM_STALE_MS ? { angle: a.angle, power: a.power } : null,
           };
@@ -1283,7 +1433,9 @@ export function createGame(options: CreateGameOptions): Game {
     lastShots.set(playerId, { from: { x: player.ball.x, y: player.ball.y }, penalties: 0 });
     const from = surfaces.at(player.ball);
     const speed = clamp(power, 0, 1) * MAX_SHOT_SPEED * shotPowerFactor(from);
-    const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+    // Invert Controls: the shot goes opposite to the drag, whatever the client showed (server-side, so Stealth works).
+    const aimed = effects.find(playerId, "invertControls") ? angle + Math.PI : angle;
+    const velocity = { x: Math.cos(aimed) * speed, y: Math.sin(aimed) * speed };
     physics.setVelocity(playerId, velocity);
     player.ball.vx = velocity.x;
     player.ball.vy = velocity.y;
@@ -1468,6 +1620,7 @@ export function createGame(options: CreateGameOptions): Game {
     }
     // Effects act before the world moves (a Frozen ball is pinned before anything can hit it).
     effects.step();
+    applyMagnet();
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
     state.obstacleTimeMs = physics.obstacleTimeMs;

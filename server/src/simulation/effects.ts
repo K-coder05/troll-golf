@@ -62,6 +62,8 @@ export interface ActiveEffect {
   readonly durationMs: number;
   /** Clock time (ms) it ends on its own; moved with setEndsAt (mashing out of a Freeze). */
   endsAt: number;
+  /** Whether it is mirrored into PlayerState.effects (a badge for everyone); false for hidden kinds and Stealth Admin uses. */
+  readonly visible: boolean;
   /** Kind-specific numbers (e.g. Freeze's mash count). */
   readonly data: Record<string, number>;
 }
@@ -135,6 +137,8 @@ export interface EffectStartOptions {
    * Effects; Admin Powers pass false (they aren't affected by chaos).
    */
   scaled?: boolean;
+  /** Keep this one server-only even if its kind is normally visible (a Stealth Admin Effect). */
+  hidden?: boolean;
 }
 
 /**
@@ -277,10 +281,11 @@ export function createEffectSystem(options: EffectSystemOptions): EffectSystem {
         startedAt: now,
         durationMs,
         endsAt: now + durationMs,
+        visible: def(kind).visible && !opts.hidden,
         data: { ...opts.data },
       };
       active.push(effect);
-      if (def(kind).visible) {
+      if (effect.visible) {
         const shown: EffectState = { id: effect.id, kind, startedAt: now, endsAt: effect.endsAt };
         player.effects.push(shown);
       }

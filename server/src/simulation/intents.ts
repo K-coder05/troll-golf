@@ -113,6 +113,8 @@ export type IntentRejection =
   /** A self Item (Cup Magnet, Ghost Ball) used while one of the same kind is already armed. The Item is kept. */
   | "already_active"
   /** A mash with no Effect that reacts to it. */
-  | "no_effect";
+  | "no_effect"
+  /** Spawn Wall that would sit on the Cup. */
+  | "wall_blocked";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

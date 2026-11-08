@@ -119,6 +119,24 @@ function useAdminPowers(
   }
   use("terrainPaint", "stealth", { action: "clear" });
   use("terrainPaint", "loud", { action: "stroke", surface: "sand", radius: 25, points: [{ x: 640, y: 480 }], durationSec: 1 });
+  // Magnet/Repel: the same polarity for everyone (the default would favour the Admin and so differ between runs), then off.
+  for (const mode of ["stealth", "loud"] as const) {
+    for (const targetId of ["maya", "ben", "jay"]) use("magnet", mode, { action: "set", targetId, polarity: "attract" });
+    use("magnet", mode, { action: "toggle", enabled: true });
+    use("magnet", mode, { action: "toggle", enabled: false });
+  }
+  // Spawn Wall: out of the way of every ball; one stays, one is timed, then Clear.
+  for (const mode of ["stealth", "loud"] as const) {
+    use("spawnWall", mode, { action: "spawn", a: { x: 560, y: 470 }, b: { x: 620, y: 470 } });
+    use("spawnWall", mode, { action: "spawn", a: { x: 560, y: 530 }, b: { x: 620, y: 530 }, durationSec: 1 });
+  }
+  use("spawnWall", "stealth", { action: "clear" });
+  // Invert Controls on others and on the Admin, in both modes.
+  for (const mode of ["stealth", "loud"] as const) {
+    use("invertControls", mode, { targetId: "jay" });
+    use("invertControls", mode, { targetId: "ben", durationSec: 5 });
+    use("invertControls", mode, { targetId: "maya", durationSec: 5 });
+  }
   // Items: give (to others and to the Admin), rig a box, God Mode on and off.
   for (const mode of ["stealth", "loud"] as const) {
     use("giveItem", mode, { targetId: "jay", item: "freezeRay" });

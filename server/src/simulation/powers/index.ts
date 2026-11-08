@@ -3,11 +3,14 @@ import { ballGrab } from "./ballGrab";
 import { cupSize } from "./cupSize";
 import { giveItem } from "./giveItem";
 import { godMode } from "./godMode";
+import { invertControls } from "./invertControls";
 import { lipOut } from "./lipOut";
+import { magnet } from "./magnet";
 import { moveCup } from "./moveCup";
 import { nuke } from "./nuke";
 import { rigBox } from "./rigBox";
 import { scoreboardEdit } from "./scoreboardEdit";
+import { spawnWall } from "./spawnWall";
 import { terrainPaint } from "./terrainPaint";
 
 /**
@@ -26,4 +29,7 @@ export const ADMIN_POWERS: AdminPowerRegistry = {
   giveItem,
   rigBox,
   godMode,
+  magnet,
+  spawnWall,
+  invertControls,
 };

@@ -4,6 +4,7 @@ import {
   type AdminPowerId,
   type AdminPowerParams,
   type ItemId,
+  type MagnetPolarity,
   type NukeAftermath,
   type PaintSurface,
   type Phase,
@@ -107,6 +108,34 @@ export interface AdminItemControl {
   setGodMode(enabled: boolean, mode: AdminMode): void;
 }
 
+/** The Cup's Magnet/Repel force on rolling balls. Server-only state. */
+export interface AdminMagnetControl {
+  /** Switch the force on or off for everyone. */
+  setEnabled(enabled: boolean): void;
+  /** Choose attract, repel or off for one Player (overriding the default: Admin attract, others repel). */
+  setPolarity(playerId: string, polarity: MagnetPolarity): { ok: true; name: string } | { ok: false; reason: IntentRejection };
+}
+
+/** Spawned walls, stored as terrain edits with a physics body. */
+export interface AdminWallControl {
+  /**
+   * A wall from a to b (clamped into the Hole). Balls it overlaps are moved
+   * clear. `terrain_full` at the edit budget; `wall_blocked` if it sits on the Cup.
+   */
+  spawn(a: Vec2, b: Vec2, thickness: number, durationMs?: number): { ok: true } | { ok: false; reason: IntentRejection };
+  /** Remove every spawned wall. Returns how many there were. */
+  clear(): number;
+}
+
+/** Admin-applied Effects, started directly (no Shield, immunity or cap, no chaos scaling). */
+export interface AdminEffectControl {
+  /**
+   * Flip the Player's shots. `hidden` keeps the Effect server-only (no badge
+   * for anyone), for Stealth.
+   */
+  invertControls(playerId: string, durationMs: number, hidden: boolean): { ok: true; name: string } | { ok: false; reason: IntentRejection };
+}
+
 /**
  * What a handler may touch. Deliberately small; later Admin Powers add the
  * hooks they need (physics, surfaces, the Cup, Items...) in game.ts, where the
@@ -131,6 +160,12 @@ export interface AdminPowerContext {
   readonly terrain: AdminTerrainControl;
   /** Give Items, rig boxes, God Mode. */
   readonly items: AdminItemControl;
+  /** Magnet/Repel. */
+  readonly magnet: AdminMagnetControl;
+  /** Spawn Wall. */
+  readonly walls: AdminWallControl;
+  /** Invert Controls. */
+  readonly effects: AdminEffectControl;
 }
 
 export type AdminPowerOutcome =
@@ -222,6 +257,9 @@ export interface AdminPowersOptions {
   cup: AdminCupControl;
   terrain: AdminTerrainControl;
   items: AdminItemControl;
+  magnet: AdminMagnetControl;
+  walls: AdminWallControl;
+  effects: AdminEffectControl;
 }
 
 export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
@@ -278,6 +316,9 @@ export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
         cup: options.cup,
         terrain: options.terrain,
         items: options.items,
+        magnet: options.magnet,
+        walls: options.walls,
+        effects: options.effects,
       };
       const outcome = handler.use(ctx, params as never, mode);
       if (!outcome.ok) return reject(handler.id, outcome.reason);

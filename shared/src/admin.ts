@@ -9,6 +9,7 @@
 /** How an Admin Power is used: Stealth looks like bad luck, Loud adds spectacle and a Golf Gods banner. */
 import type { EffectKind } from "./effects";
 import type { ItemId } from "./items";
+import type { Vec2 } from "./course";
 import type { PaintSurface } from "./terrain";
 
 export type AdminMode = "stealth" | "loud";
@@ -100,7 +101,53 @@ export interface AdminPowerParams {
    * is exactly a Shield pop, Loud is a divine block with a Golf Gods banner.
    */
   godMode: { enabled: boolean };
+  /**
+   * Magnet/Repel: while on, the Cup pulls (attract) or pushes (repel) each
+   * rolling ball by a steady acceleration, so paths curve. `toggle` switches
+   * the whole thing on or off; `set` picks attract, repel or off for one
+   * Player. Without a `set`, the Admin's ball is attracted and everyone
+   * else's is repelled. Server-only; lasts until toggled off or the Hole
+   * ends (a new Hole starts with it off and the choices forgotten).
+   */
+  magnet:
+    | { action: "toggle"; enabled: boolean }
+    | { action: "set"; targetId: string; polarity: MagnetPolarity };
+  /**
+   * Spawn Wall: a wall segment from `a` to `b` (clamped into the Hole) of
+   * `thickness` px (default WALL_DEFAULT_THICKNESS) that balls bounce off.
+   * Optional `durationSec` makes it vanish after that long; otherwise it
+   * lasts until the next Hole. Balls it would overlap are moved clear, and it
+   * is refused if it would sit on the Cup. `clear` removes every spawned wall.
+   * Stored as a terrain edit, so everyone (and reconnecting clients) sees it.
+   */
+  spawnWall:
+    | { action: "spawn"; a: Vec2; b: Vec2; thickness?: number; durationSec?: number }
+    | { action: "clear" };
+  /**
+   * Invert Controls: for `durationSec` (default INVERT_DEFAULT_SEC) the
+   * target's shots go the opposite way to their drag. Stealth: no badge, no
+   * event, and the target's own aim line still shows their drag; Loud: a
+   * badge on the ball plus the Golf Gods banner. Ignores Shields/immunity.
+   */
+  invertControls: { targetId: string; durationSec?: number };
 }
+
+export type MagnetPolarity = "attract" | "repel" | "off";
+/** Cup Magnet/Repel acceleration (px/s^2) and the range it works within (px from the Cup). */
+export const MAGNET_ACCEL = 260;
+export const MAGNET_RANGE = 500;
+
+/** Spawn Wall limits, px: segment length, thickness, and the default thickness. */
+export const WALL_MIN_LENGTH = 16;
+export const WALL_MAX_LENGTH = 600;
+export const WALL_MIN_THICKNESS = 6;
+export const WALL_MAX_THICKNESS = 30;
+export const WALL_DEFAULT_THICKNESS = 14;
+export const WALL_MAX_DURATION_SEC = 300;
+
+/** Invert Controls: default and longest duration, s. */
+export const INVERT_DEFAULT_SEC = 20;
+export const INVERT_MAX_SEC = 120;
 
 /** Longest an aim line stays on the x-ray after the Player's last aim update, ms. */
 export const XRAY_AIM_STALE_MS = 1500;

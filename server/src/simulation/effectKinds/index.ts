@@ -3,6 +3,7 @@ import { cupMagnet } from "./cupMagnet";
 import { frozen } from "./frozen";
 import { ghostBall } from "./ghostBall";
 import { inked } from "./inked";
+import { invertControls } from "./invertControls";
 import { shielded } from "./shielded";
 
 /**
@@ -16,5 +17,6 @@ export const EFFECT_DEFINITIONS: EffectRegistry = {
   frozen,
   ghostBall,
   inked,
+  invertControls,
   shielded,
 };

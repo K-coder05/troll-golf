@@ -491,6 +491,9 @@ export class HoleScene extends Phaser.Scene {
           points: Array.from(edit.points, (p) => ({ x: p.x, y: p.y })),
           expiresAt: 0,
         });
+      } else if (edit.kind === "wall") {
+        const [a, b] = Array.from(edit.points, (p) => ({ x: p.x, y: p.y }));
+        if (a && b) this.drawSpawnedWall(drawn.g, a, b, edit.radius);
       }
     }
     for (const [id, drawn] of this.terrainDrawn) {
@@ -498,6 +501,14 @@ export class HoleScene extends Phaser.Scene {
       drawn.g.destroy();
       this.terrainDrawn.delete(id);
     }
+  }
+
+  /** A spawned wall: a thick segment with rounded ends, in the course walls' colours. */
+  private drawSpawnedWall(g: Phaser.GameObjects.Graphics, a: { x: number; y: number }, b: { x: number; y: number }, radius: number): void {
+    g.lineStyle(radius * 2 + 4, COLORS.wallEdge).lineBetween(a.x, a.y, b.x, b.y);
+    g.fillStyle(COLORS.wallEdge).fillCircle(a.x, a.y, radius + 2).fillCircle(b.x, b.y, radius + 2);
+    g.lineStyle(radius * 2, COLORS.wall).lineBetween(a.x, a.y, b.x, b.y);
+    g.fillStyle(COLORS.wall).fillCircle(a.x, a.y, radius).fillCircle(b.x, b.y, radius);
   }
 
   /** A brush stroke drawn like a surface zone of its kind: fill, then the same texture on the same 12 px grid. */

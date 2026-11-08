@@ -202,7 +202,7 @@ describe("Terrain Paint: synced state", () => {
     paint(t, stroke("void", [100, 500], [900, 500]), "loud");
     syncState(live, t.state);
     // The long stroke carried on as a second one.
-    expect(t.state.terrainEdits.map((e) => e.surface)).toEqual(["water", "water", "void"]);
+    expect(t.state.terrainEdits.map((e) => (e.kind === "paint" ? e.surface : e.kind))).toEqual(["water", "water", "void"]);
 
     const fresh = new RoomStateSchema();
     syncState(fresh, t.state);

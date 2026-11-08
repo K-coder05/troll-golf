@@ -31,10 +31,29 @@ export interface PaintStrokeEdit {
 }
 
 /**
- * Every kind of terrain edit, told apart by `kind`. Ticket 21 adds
- * `{ kind: "wall" }` (two points and a thickness, with a physics body).
+ * A spawned wall (Spawn Wall): a straight segment from `points[0]` to
+ * `points[1]` that balls bounce off, `radius` being half its thickness (its
+ * ends are rounded). It has a physics body on the server.
  */
-export type TerrainEdit = PaintStrokeEdit;
+export interface WallEdit {
+  kind: "wall";
+  id: number;
+  /** Exactly two points: the segment's ends. */
+  points: [PointState, PointState];
+  /** Half the wall's thickness, px. */
+  radius: number;
+  /** Clock time (ms) the wall vanishes at; 0 = stays until the next Hole. */
+  expiresAt: number;
+}
+
+/** Every kind of terrain edit, told apart by `kind`. */
+export type TerrainEdit = PaintStrokeEdit | WallEdit;
+
+/** Whether a ball of `ballRadius` centred at p touches the wall. */
+export function wallTouches(wall: WallEdit, p: PointState, ballRadius: number): boolean {
+  const reach = wall.radius + ballRadius;
+  return distanceToSegmentSq(p, wall.points[0], wall.points[1]) < reach * reach;
+}
 
 /** Squared distance from p to the segment a-b. */
 export function distanceToSegmentSq(p: PointState, a: PointState, b: PointState): number {

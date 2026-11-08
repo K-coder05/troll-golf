@@ -92,6 +92,8 @@ export class PhysicsWorld {
   private readonly hole: HoleData;
   private readonly windmillBodies: Body[] = [];
   private readonly wallBodies: Body[] = [];
+  /** Spawned walls (Spawn Wall), by terrain edit id. */
+  private readonly spawnedWalls = new Map<number, Body>();
   /** Last position of each ball that was legal (inside the Hole, outside every wall). */
   private readonly safeSpots = new Map<string, Vec2>();
   /** Balls that pass through walls and obstacles (Ghost Ball). Only the Hole's edge still holds them. */
@@ -137,6 +139,37 @@ export class PhysicsWorld {
         return { x: p.x * PIXELS_PER_METRE, y: p.y * PIXELS_PER_METRE };
       }),
     };
+  }
+
+  /**
+   * Add a spawned wall: a thick segment from a to b with rounded ends
+   * (`radius` is half its thickness). It is in the ordinary wall category, so
+   * a Ghost Ball passes through it like any other wall.
+   */
+  addWall(id: number, a: Vec2, b: Vec2, radius: number): void {
+    this.removeWall(id);
+    const body = this.world.createBody({ type: "static", userData: { kind: "wall" } satisfies BodyTag });
+    const fixture = {
+      friction: 0,
+      restitution: WALL_RESTITUTION,
+      filterCategoryBits: CATEGORY.wall,
+      filterMaskBits: CATEGORY.ball,
+    };
+    const r = radius / PIXELS_PER_METRE;
+    const length = Math.hypot(b.x - a.x, b.y - a.y) / PIXELS_PER_METRE;
+    const centre = toMetres({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    body.createFixture(new Box(length / 2, r, centre, angle), fixture);
+    body.createFixture(new Circle(toMetres(a), r), fixture);
+    body.createFixture(new Circle(toMetres(b), r), fixture);
+    this.spawnedWalls.set(id, body);
+  }
+
+  removeWall(id: number): void {
+    const body = this.spawnedWalls.get(id);
+    if (!body) return;
+    this.world.destroyBody(body);
+    this.spawnedWalls.delete(id);
   }
 
   /** Put a ball into the world at rest. */

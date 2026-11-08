@@ -13,7 +13,7 @@
 import type { PlayerState } from "./state";
 
 /** Every Effect kind. Tickets 16-21 add theirs here. */
-export type EffectKind = "frozen" | "shielded" | "inked" | "cupMagnet" | "ghostBall";
+export type EffectKind = "frozen" | "shielded" | "inked" | "cupMagnet" | "ghostBall" | "invertControls";
 
 export interface EffectInfo {
   kind: EffectKind;
@@ -31,6 +31,7 @@ export const EFFECT_INFO: { readonly [K in EffectKind]: EffectInfo } = {
   shielded: { kind: "shielded", name: "Shielded", icon: "🛡️", disabling: false },
   cupMagnet: { kind: "cupMagnet", name: "Cup Magnet", icon: "🧲", disabling: false },
   ghostBall: { kind: "ghostBall", name: "Ghost Ball", icon: "👻", disabling: false },
+  invertControls: { kind: "invertControls", name: "Inverted", icon: "🔄", disabling: false },
 };
 
 /** An active Effect as every client sees it: on the target's ball, never saying who caused it. */
