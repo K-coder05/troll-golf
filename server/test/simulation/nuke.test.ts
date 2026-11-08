@@ -1,6 +1,7 @@
 import { NUKE_BLAST_MS, NUKE_SIREN_MS } from "@troll-golf/shared";
 import { describe, expect, it } from "vitest";
 import { sampleCourse } from "../../src/courses";
+import { placeholderCourse } from "../../src/courses/placeholder";
 import { TestGame } from "../harness";
 
 /** Placeholder Course: Tee (160, 320), Cup (800, 320) r12. Maya is the Admin. */
@@ -204,5 +205,26 @@ describe("Nuke", () => {
     t.advance(NUKE_BLAST_MS);
     expect(dist(t.ball("jay"), { x: 160, y: 320 })).toBeLessThan(60);
     expect(t.adminPower("maya", "ballGrab", { action: "move", x: 1, y: 1 })).toEqual({ ok: false, reason: "not_holding" });
+  });
+
+  it("held Items survive both Wipe and Reset", () => {
+    // The Practice Box with an Item Box just right of Ben's Tee slot (160, 300).
+    const course = { ...placeholderCourse, holes: [{ ...placeholderCourse.holes[0]!, itemBoxes: [{ x: 230, y: 300 }] }] };
+    const t = new TestGame({ course });
+    t.joinAsAdmin("maya", "Maya");
+    t.join("ben", "Ben");
+    t.startPlaying();
+    t.shoot("ben", 0, 0.12);
+    t.advanceUntilRest("ben");
+    expect(t.game.getHeldItem("ben")).toBe("mulligan");
+    t.drain();
+
+    for (const aftermath of ["wipe", "reset"] as const) {
+      expect(nuke(t, { x: 300, y: 320, aftermath })).toEqual({ ok: true });
+      t.advance(NUKE_SIREN_MS + NUKE_BLAST_MS + 100);
+      expect(t.game.getHeldItem("ben")).toBe("mulligan");
+      // Ben is never told his slot changed.
+      expect(TestGame.seenBy(t.drain(), "ben").filter((e) => e.type === "item")).toEqual([]);
+    }
   });
 });

@@ -5,6 +5,7 @@ import {
   createGame,
   createSeededRng,
   ManualClock,
+  type CreateGameOptions,
   type Game,
   type GameEvent,
   type Intent,
@@ -20,6 +21,8 @@ export interface TestGameOptions {
   settings?: Partial<GameSettings>;
   seed?: number;
   code?: string;
+  /** Item data and handlers other than the defaults. */
+  items?: CreateGameOptions["items"];
 }
 
 /**
@@ -38,6 +41,7 @@ export class TestGame {
       settings: options.settings,
       rng: createSeededRng(options.seed ?? 1),
       clock: this.clock,
+      items: options.items,
     });
   }
 

@@ -79,6 +79,19 @@ export const TerrainEditSchema = schema(
 );
 export type TerrainEditSchema = SchemaType<typeof TerrainEditSchema>;
 
+/** One Item Box (see ItemBoxState in @troll-golf/shared). Never says who took it or what was in it. */
+export const ItemBoxSchema = schema(
+  {
+    id: t.number(),
+    x: t.number(),
+    y: t.number(),
+    active: t.boolean(),
+    respawnAt: t.number(),
+  },
+  "ItemBox",
+);
+export type ItemBoxSchema = SchemaType<typeof ItemBoxSchema>;
+
 export const RoomStateSchema = schema(
   {
     code: t.string(),
@@ -95,6 +108,7 @@ export const RoomStateSchema = schema(
     settings: SettingsSchema,
     players: t.map(PlayerSchema),
     terrainEdits: t.array(TerrainEditSchema),
+    itemBoxes: t.array(ItemBoxSchema),
   },
   "RoomState",
 );

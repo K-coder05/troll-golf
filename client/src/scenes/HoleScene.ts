@@ -13,9 +13,12 @@ import {
   strokeSegmentCovers,
   windmillCorners,
   NUKE_SIREN_MS,
+  ITEM_TUNING,
+  type ItemBoxState,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
 import { startSiren } from "../fx/siren";
+import { ITEM_RENDERERS } from "../items";
 import { SnapshotBuffer, type Point } from "../net/interpolation";
 import type { AdminHit, AdminView } from "../adminHost";
 import type { HudView } from "../ui/hud";
@@ -40,6 +43,7 @@ interface SyncedTerrainEdit {
 interface SyncedState {
   phase: Phase;
   terrainEdits?: Iterable<SyncedTerrainEdit>;
+  itemBoxes?: Iterable<ItemBoxState>;
   leaderId: string;
   holeIndex: number;
   cup: CupState;
@@ -130,6 +134,8 @@ export class HoleScene extends Phaser.Scene {
   private obstacleSync = { serverMs: 0, receivedAt: 0 };
   private aim!: Phaser.GameObjects.Graphics;
   private balls = new Map<string, BallSprite>();
+  /** One floating "?" per Item Box, by box id. */
+  private boxes = new Map<number, Phaser.GameObjects.Container>();
   private tab!: Phaser.Input.Keyboard.Key;
   private escape!: Phaser.Input.Keyboard.Key;
 
@@ -211,6 +217,7 @@ export class HoleScene extends Phaser.Scene {
     this.renderTerrain();
     this.renderCup();
     this.renderObstacles();
+    this.renderItemBoxes();
     this.renderBalls();
     // A shot can only start from a ball at rest during play; drop the aim otherwise.
     if (this.aimPoint && !this.canShoot()) this.aimPoint = null;
@@ -464,10 +471,65 @@ export class HoleScene extends Phaser.Scene {
     g.lineStyle(2, 0xc77dff).strokeCircle(x, y, radius * 0.25);
   }
 
+  /**
+   * Item Boxes from synced state: a bobbing "?" while active, gone while
+   * shattered. They are sensors, drawn under the balls.
+   */
+  private renderItemBoxes(): void {
+    const seen = new Set<number>();
+    const t = performance.now() / 1000;
+    for (const box of this.syncedState()?.itemBoxes ?? []) {
+      seen.add(box.id);
+      let sprite = this.boxes.get(box.id);
+      if (!sprite) {
+        const size = ITEM_TUNING.boxRadius * 1.6;
+        const square = this.add.rectangle(0, 0, size, size, 0xffd24d, 0.9).setStrokeStyle(2, 0x7a5200);
+        const mark = this.add
+          .text(0, 0, "?", { fontFamily: "system-ui, sans-serif", fontSize: "16px", fontStyle: "bold", color: "#3b2a00" })
+          .setOrigin(0.5);
+        sprite = this.add.container(box.x, box.y, [square, mark]).setDepth(4);
+        this.boxes.set(box.id, sprite);
+      }
+      sprite.setPosition(box.x, box.y + Math.sin(t * 3 + box.id) * 2);
+      sprite.setRotation(Math.sin(t * 2 + box.id) * 0.15);
+      sprite.setVisible(box.active);
+    }
+    for (const [id, sprite] of this.boxes) {
+      if (seen.has(id)) continue;
+      sprite.destroy();
+      this.boxes.delete(id);
+    }
+  }
+
+  /** An Item Box shatters: shards fly out. */
+  private playBoxShatter(fx: FxMessage): void {
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.3;
+      const shard = this.add.rectangle(fx.x, fx.y, 5, 5, i % 2 ? 0xffd24d : 0xffffff).setDepth(8);
+      this.tweens.add({
+        targets: shard,
+        x: fx.x + Math.cos(a) * 30,
+        y: fx.y + Math.sin(a) * 30,
+        angle: 180,
+        alpha: 0,
+        duration: 450,
+        onComplete: () => shard.destroy(),
+      });
+    }
+  }
+
   /** Short expanding ring and droplets at a point. */
   private playFx(fx: FxMessage): void {
     if (fx.kind === "nukeSiren" || fx.kind === "nukeBlast" || fx.kind === "nukeAbort") {
       this.playNukeFx(fx);
+      return;
+    }
+    if (fx.kind === "itemBox") {
+      this.playBoxShatter(fx);
+      return;
+    }
+    if (fx.kind === "itemUse") {
+      if (fx.item) ITEM_RENDERERS[fx.item]?.playUse(this, fx);
       return;
     }
     const colour = {

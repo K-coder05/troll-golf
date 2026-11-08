@@ -31,6 +31,8 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
   private game!: Game;
   /** How many Admin Power log entries have been written to the server log. */
   private adminLogWritten = 0;
+  /** How many Item log entries have been written to the server log. */
+  private itemLogWritten = 0;
 
   override onCreate(): void {
     const code = claimRoomCode();
@@ -42,6 +44,12 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     this.onMessage("shoot", (client, message: unknown) => {
       const { angle, power } = (message ?? {}) as { angle?: unknown; power?: unknown };
       this.game.handleIntent(client.sessionId, { type: "shoot", angle: Number(angle), power: Number(power) });
+    });
+    // Items: the simulation checks the slot and validates the target or point.
+    this.onMessage("useItem", (client, message: unknown) => {
+      const { targetId, point } = (message ?? {}) as { targetId?: unknown; point?: unknown };
+      this.game.handleIntent(client.sessionId, { type: "useItem", targetId, point });
+      this.flush();
     });
     // Lobby: the simulation checks that only the room creator may do these.
     this.onMessage("configure", (client, message: unknown) => {
@@ -125,13 +133,17 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     this.flush();
   }
 
-  /** Mirror state into the schema, deliver pending events and write new Admin Power uses to the server log. */
+  /** Mirror state into the schema, deliver pending events and write new Admin Power and Item log entries to the server log. */
   private flush(): void {
     syncState(this.state, this.game.getState());
     for (const event of this.game.drainEvents()) this.deliver(event);
     const log = this.game.getAdminLog();
     while (this.adminLogWritten < log.length) {
       console.info(`[admin-log] room=${this.roomId} ${JSON.stringify(log[this.adminLogWritten++])}`);
+    }
+    const itemLog = this.game.getItemLog();
+    while (this.itemLogWritten < itemLog.length) {
+      console.info(`[item-log] room=${this.roomId} ${JSON.stringify(itemLog[this.itemLogWritten++])}`);
     }
   }
 

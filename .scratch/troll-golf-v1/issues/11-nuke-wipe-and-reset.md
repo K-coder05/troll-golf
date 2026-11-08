@@ -13,7 +13,7 @@ Held Items are kept in both modes. A Nuke is always spectacular, but its banner 
 - [x] Wipe moves every ball not Holed Out to the Tee at rest, keeps all Strokes, and leaves the timer unchanged. Tested through the simulation.
 - [x] Reset un-Holes-Out everyone, puts every ball on the Tee, zeroes this Hole's Strokes for everyone and restarts the Hole timer.
 - [x] Wipe is the default when no mode is given.
-- [ ] Held Items survive both modes. This can only be checked once Items exist; add the test then.
+- [x] Held Items survive both modes. This can only be checked once Items exist; add the test then.
 - [x] The siren, flash, white-out and shake fx are sent to everyone, with the banner only in Loud.
 - [x] The siren lasts 3 s; balls are only affected when it ends.
 
@@ -29,3 +29,5 @@ Built:
 - Held Items: nothing touches per-Player item state; the test can only be added with ticket 14 (box left unticked).
 - Client: public `HoleScene.playNukeFx` + `client/src/fx/siren.ts` (WebAudio siren, pulsing red overlay for 3 s, then white-out, camera shake, shockwave ring). Admin bundle: `client/src/admin/powers/nuke.ts` panel (Wipe/Reset select, "Pick impact point" click, radial `onRadial` on terrain/ball/Cup launches at the right-click point). Not clicked through in a browser.
 - Tests: `server/test/simulation/nuke.test.ts` (12), and Nuke added to `secrecy.test.ts` `useAdminPowers` (Stealth Nuke fx-only to everyone, Loud one banner). 183 tests total.
+
+- Ticket 14 added the held-Items test (`nuke.test.ts` "held Items survive both Wipe and Reset") and ticked the box.

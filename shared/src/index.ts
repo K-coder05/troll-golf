@@ -7,3 +7,4 @@ export * from "./ball";
 export * from "./obstacles";
 export * from "./admin";
 export * from "./terrain";
+export * from "./items";

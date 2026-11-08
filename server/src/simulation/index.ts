@@ -24,6 +24,20 @@ export type {
   AdminPowerRegistry,
 } from "./admin";
 export { ADMIN_POWERS } from "./powers";
+export {
+  chooseBoxSpawns,
+  drawCategory,
+  drawItem,
+  oddsRowFor,
+  type ItemBallControl,
+  type ItemContext,
+  type ItemHandler,
+  type ItemHandlerRegistry,
+  type ItemLogEntry,
+  type ItemUseOutcome,
+  type ItemUseRequest,
+} from "./items";
+export { ITEM_HANDLERS } from "./itemHandlers";
 export { everyone, toPlayer, toAdmin, type Audience, type GameEvent } from "./events";
 export { createSeededRng, mathRandomRng, type Rng } from "./random";
 export { ManualClock, systemClock, type Clock } from "./clock";

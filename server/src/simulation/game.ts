@@ -1,5 +1,7 @@
 import {
   BALL_RADIUS,
+  ITEM_CATALOGUE,
+  ITEM_TUNING,
   MAX_PLAYERS,
   MAX_THROW_SPEED,
   NUKE_BLAST_MIN_SPEED,
@@ -13,6 +15,9 @@ import {
   type CourseData,
   type CourseSummary,
   type GameSettings,
+  type ItemCatalogue,
+  type ItemId,
+  type ItemTuning,
   type NukeAftermath,
   type PaintStrokeEdit,
   type PlayerState,
@@ -30,6 +35,8 @@ import {
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
+import { ITEM_HANDLERS } from "./itemHandlers";
+import { createItemSystem, type ItemBallControl, type ItemHandlerRegistry, type ItemLogEntry } from "./items";
 import { PHYSICS_STEP_MS, PhysicsWorld } from "./physics";
 import { ADMIN_POWERS } from "./powers";
 import type { Rng } from "./random";
@@ -104,6 +111,12 @@ export interface CreateGameOptions {
   settings?: Partial<GameSettings>;
   rng: Rng;
   clock: Clock;
+  /**
+   * Item data and handlers; defaults to ITEM_CATALOGUE, ITEM_TUNING and
+   * ITEM_HANDLERS. Tests swap in other data (weights, durations) or extra
+   * handlers.
+   */
+  items?: { catalogue?: ItemCatalogue; tuning?: ItemTuning; handlers?: ItemHandlerRegistry };
 }
 
 /**
@@ -126,6 +139,10 @@ export interface Game {
   getAdminId(): string | null;
   /** Every Admin Power use so far, oldest first, timestamped. Server-only, never synced. */
   getAdminLog(): readonly AdminLogEntry[];
+  /** Every Item pickup and use so far, oldest first, timestamped. Server-only, never synced. */
+  getItemLog(): readonly ItemLogEntry[];
+  /** The Item a Player holds, or null. Server-only: held Items are private (ticket 20's x-ray). */
+  getHeldItem(playerId: string): ItemId | null;
 }
 
 /**
@@ -159,7 +176,7 @@ function hasBallInPlay(player: Readonly<PlayerState>): boolean {
 const NOT_ON_COURSE_DISTANCE = 1e9;
 
 export function createGame(options: CreateGameOptions): Game {
-  // options.rng is not used yet; every later roll must come from it so tests stay deterministic.
+  // Every roll comes from options.rng so tests stay deterministic.
   const { clock } = options;
   let course = options.course;
   const catalogue: Readonly<Record<string, CourseData>> = { ...options.courses, [course.id]: course };
@@ -184,6 +201,7 @@ export function createGame(options: CreateGameOptions): Game {
     settings: { ...DEFAULT_SETTINGS, ...options.settings },
     players: {},
     terrainEdits: [],
+    itemBoxes: [],
   };
   let events: GameEvent[] = [];
   let joinCount = 0;
@@ -225,6 +243,9 @@ export function createGame(options: CreateGameOptions): Game {
   // Players connected at some point while the current Hole was set up or
   // played. Anyone else missed the whole Hole and is scored at its stroke cap.
   const presentThisHole = new Set<string>();
+  // Each Player's last shot on this Hole, for Mulligan: where the ball was
+  // before it and the penalty Strokes since. Cleared when a Hole (re)starts.
+  const lastShots = new Map<string, { from: Vec2; penalties: number }>();
 
   const emit = (event: GameEvent) => events.push(event);
   // The secret Admin and the Admin Power pipeline. Server-only: nothing in here reaches RoomState.
@@ -239,6 +260,40 @@ export function createGame(options: CreateGameOptions): Game {
     cup: cupControl(),
     terrain: terrainControl(),
   });
+  // Item Boxes, the draw, held Items and their use. Held Items are server-only (private to their holder).
+  const items = createItemSystem({
+    state,
+    clock,
+    rng: options.rng,
+    emit,
+    updateStandings: () => updateStandings(),
+    catalogue: options.items?.catalogue ?? ITEM_CATALOGUE,
+    tuning: options.items?.tuning ?? ITEM_TUNING,
+    handlers: options.items?.handlers ?? ITEM_HANDLERS,
+    balls: itemBallControl(),
+  });
+  items.setupHole(firstHole);
+
+  function itemBallControl(): ItemBallControl {
+    return {
+      lastShot: (playerId) => {
+        const shot = lastShots.get(playerId);
+        return shot ? { from: { ...shot.from }, penalties: shot.penalties } : null;
+      },
+      clearLastShot: (playerId) => void lastShots.delete(playerId),
+      placeAtRest(playerId, at) {
+        const player = state.players[playerId]!;
+        // The Admin loses their grip on it.
+        if (held?.id === playerId) held = null;
+        physics.removeBall(playerId);
+        forgetBall(playerId);
+        const spot = dryReturnSpot(at);
+        player.ball = { x: spot.x, y: spot.y, vx: 0, vy: 0, atRest: true, restSpot: { ...spot } };
+        addBody(player);
+        return spot;
+      },
+    };
+  }
 
   // ---- Ball Grab: the Admin holds one ball at a time ----
 
@@ -619,6 +674,8 @@ export function createGame(options: CreateGameOptions): Game {
       player.strokes[state.holeIndex] = 0;
       sendToTee(player, taken);
     }
+    // This Hole's shots are wiped: nothing left to take back.
+    lastShots.clear();
     state.holeEndsAt = clock.now() + state.settings.holeTimerSec * 1000;
     state.phaseEndsAt = state.holeEndsAt;
   }
@@ -760,8 +817,10 @@ export function createGame(options: CreateGameOptions): Game {
     cupSlide = null;
     pendingLipOut.clear();
     poppedOut.clear();
+    lastShots.clear();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
+    items.setupHole(hole);
     presentThisHole.clear();
     for (const player of Object.values(state.players)) if (player.connected) presentThisHole.add(player.id);
     state.phase = "countdown";
@@ -851,6 +910,7 @@ export function createGame(options: CreateGameOptions): Game {
     const allowed = checkCreator(playerId);
     if (!allowed.ok) return allowed;
     for (const player of Object.values(state.players)) player.strokes = course.holes.map(() => 0);
+    items.resetAll();
     startHole(0);
     return { ok: true };
   }
@@ -877,8 +937,10 @@ export function createGame(options: CreateGameOptions): Game {
     cupSlide = null;
     pendingLipOut.clear();
     poppedOut.clear();
+    lastShots.clear();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
+    items.setupHole(hole);
     for (const player of Object.values(state.players)) player.strokes = course.holes.map(() => 0);
     emit({ type: "hole", payload: { holeIndex: 0, hole }, audience: everyone });
     emit({ type: "feed", payload: { text: `Course: ${course.name}` }, audience: everyone });
@@ -893,6 +955,8 @@ export function createGame(options: CreateGameOptions): Game {
     emit({ type: "time", payload: { now: clock.now() }, audience: toPlayer(playerId) });
     emit({ type: "courses", payload: { courses: courseList }, audience: toPlayer(playerId) });
     emit({ type: "hole", payload: { holeIndex: state.holeIndex, hole: currentHole() }, audience: toPlayer(playerId) });
+    // Their own item slot (kept through a disconnect), to them alone.
+    items.sendSlot(playerId);
   }
 
   /**
@@ -993,6 +1057,8 @@ export function createGame(options: CreateGameOptions): Game {
       joinOrder.delete(playerId);
       physics.removeBall(playerId);
       forgetBall(playerId);
+      items.forget(playerId);
+      lastShots.delete(playerId);
     } else {
       player.connected = false;
       if (physics.hasBall(playerId)) removeBody(player);
@@ -1026,6 +1092,7 @@ export function createGame(options: CreateGameOptions): Game {
     // Freeze (15) adds its check here. A ball held by the Admin reads as moving.
     if (held?.id === playerId || !player.ball.atRest) return { ok: false, reason: "ball_moving" };
 
+    lastShots.set(playerId, { from: { x: player.ball.x, y: player.ball.y }, penalties: 0 });
     const from = surfaces.at(player.ball);
     const speed = clamp(power, 0, 1) * MAX_SHOT_SPEED * shotPowerFactor(from);
     const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
@@ -1049,6 +1116,8 @@ export function createGame(options: CreateGameOptions): Game {
     const kind = surfaces.at(at);
     emit({ type: "fx", payload: { kind: kind === "void" ? "void" : "splash", x: at.x, y: at.y }, audience: everyone });
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
+    const shot = lastShots.get(player.id);
+    if (shot) shot.penalties++;
     ball.restSpot = dryReturnSpot(ball.restSpot);
     physics.teleport(player.id, ball.restSpot);
     ball.x = ball.restSpot.x;
@@ -1185,6 +1254,11 @@ export function createGame(options: CreateGameOptions): Game {
   function physicsStep(): void {
     slideCup(PHYSICS_STEP_MS);
     guardCup();
+    // Where each ball in play starts this step, so Item Boxes catch a ball that passes through one between steps.
+    const startedAt = new Map<string, Vec2>();
+    for (const [id, player] of Object.entries(state.players)) {
+      if (physics.hasBall(id)) startedAt.set(id, { x: player.ball.x, y: player.ball.y });
+    }
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;
     state.obstacleTimeMs = physics.obstacleTimeMs;
@@ -1198,6 +1272,8 @@ export function createGame(options: CreateGameOptions): Game {
       ball.vx = motion.vx;
       ball.vy = motion.vy;
 
+      // Item Boxes are sensors: passing through one never changes the ball's path.
+      items.rollThrough(player, startedAt.get(id) ?? motion, motion);
       if (!ball.atRest && checkCup(player)) continue;
       // Resting balls too: Terrain Paint can put Water or Void under a ball that isn't moving.
       // It sinks like any other (the return spot is always dry, so it can't sink again where it lands).
@@ -1249,6 +1325,8 @@ export function createGame(options: CreateGameOptions): Game {
           return configure(playerId, intent.courseId);
         case "shoot":
           return shoot(playerId, intent.angle, intent.power);
+        case "useItem":
+          return items.use(playerId, intent);
         case "admin":
           return admin.use(playerId, intent);
         default:
@@ -1267,7 +1345,10 @@ export function createGame(options: CreateGameOptions): Game {
         steps++;
       }
       if (steps === MAX_STEPS_PER_CALL) pendingMs = 0;
-      if (state.phase === "playing") expireTerrain();
+      if (state.phase === "playing") {
+        expireTerrain();
+        items.respawnBoxes();
+      }
       advancePhase();
       updateStandings();
     },
@@ -1284,6 +1365,12 @@ export function createGame(options: CreateGameOptions): Game {
     },
     getAdminLog() {
       return admin.log;
+    },
+    getItemLog() {
+      return items.log;
+    },
+    getHeldItem(playerId) {
+      return items.held(playerId);
     },
   };
 }

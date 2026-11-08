@@ -8,6 +8,7 @@
 
 import type { AdminBundleMessage, AdminMessage, AdminResultMessage, BannerMessage } from "./admin";
 import type { HoleData } from "./course";
+import type { ItemDeniedMessage, ItemId, ItemSlotMessage, UseItemMessage } from "./items";
 
 /** The single Colyseus room type. */
 export const ROOM_NAME = "golf";
@@ -46,6 +47,8 @@ export interface ClientMessages {
   shoot: ShootMessage;
   configure: ConfigureMessage;
   start: StartMessage;
+  /** Use the held Item. */
+  useItem: UseItemMessage;
   /** Use an Admin Power (the Admin's session only). */
   admin: AdminMessage;
 }
@@ -76,11 +79,27 @@ export interface HoleMessage {
  * `nukeSiren`: a Nuke is incoming at (x, y): 3 s of siren and red flash (Stealth too: a Nuke is always spectacular).
  * `nukeBlast`: it goes off: white-out, screen shake, balls fly outward from (x, y).
  * `nukeAbort`: the Hole ended before the Nuke went off; stop the siren.
+ * `itemBox`: an Item Box shattered at (x, y) (it never says what was inside).
+ * `itemUse`: `item` was used at (x, y); the client's renderer for that Item plays it.
  */
 export interface FxMessage {
-  kind: "splash" | "void" | "boost" | "teleport" | "holeOut" | "lipOut" | "grab" | "nukeSiren" | "nukeBlast" | "nukeAbort";
+  kind:
+    | "splash"
+    | "void"
+    | "boost"
+    | "teleport"
+    | "holeOut"
+    | "lipOut"
+    | "grab"
+    | "nukeSiren"
+    | "nukeBlast"
+    | "nukeAbort"
+    | "itemBox"
+    | "itemUse";
   x: number;
   y: number;
+  /** `itemUse` only: which Item. */
+  item?: ItemId;
 }
 
 /**
@@ -117,6 +136,10 @@ export interface ServerMessages {
   feed: FeedMessage;
   fx: FxMessage;
   hole: HoleMessage;
+  /** The holder only: what is in their item slot. */
+  item: ItemSlotMessage;
+  /** The holder only: an Item use was refused (the Item is kept). */
+  itemDenied: ItemDeniedMessage;
   time: TimeMessage;
 }
 

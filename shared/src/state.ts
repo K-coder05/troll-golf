@@ -68,6 +68,21 @@ export interface PlayerState {
   standing: number;
 }
 
+/**
+ * An Item Box floating at one of the Hole's spawn points. A sensor: balls
+ * roll straight through it. Shattered (inactive) after a pickup until
+ * `respawnAt`. Says nothing about who took it or what they got.
+ */
+export interface ItemBoxState {
+  /** Index of the box on this Hole, stable for the Hole. */
+  id: number;
+  x: number;
+  y: number;
+  active: boolean;
+  /** Clock time (ms) a shattered box comes back; 0 while active. */
+  respawnAt: number;
+}
+
 /** The Cup of the current Hole. Synced (not just in the Hole layout) because Admin Powers can move or resize it. */
 export interface CupState {
   x: number;
@@ -117,4 +132,10 @@ export interface RoomState {
    * Emptied when a new Hole starts. Never says who made an edit.
    */
   terrainEdits: TerrainEdit[];
+  /**
+   * The Item Boxes of the current Hole (empty when Items are off). Rebuilt
+   * when a Hole starts. Held Items are NOT here: they are private to their
+   * holder (see items.ts).
+   */
+  itemBoxes: ItemBoxState[];
 }

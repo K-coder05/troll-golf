@@ -1,5 +1,5 @@
 import type { RoomState } from "@troll-golf/shared";
-import { PlayerSchema, PointSchema, TerrainEditSchema, type RoomStateSchema } from "./schema";
+import { ItemBoxSchema, PlayerSchema, PointSchema, TerrainEditSchema, type RoomStateSchema } from "./schema";
 
 /**
  * Copies the simulation's public state into the synced schema. Colyseus only
@@ -53,6 +53,24 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
   }
 
   syncTerrain(target.terrainEdits, source.terrainEdits);
+  syncItemBoxes(target.itemBoxes, source.itemBoxes);
+}
+
+/** A Hole's boxes are a fixed list (rebuilt per Hole), so update in place and resize. Held Items are never synced. */
+function syncItemBoxes(target: RoomStateSchema["itemBoxes"], source: Readonly<RoomState>["itemBoxes"]): void {
+  while (target.length > source.length) target.pop();
+  source.forEach((box, i) => {
+    let synced = target[i];
+    if (!synced) {
+      synced = new ItemBoxSchema();
+      target.push(synced);
+    }
+    synced.id = box.id;
+    synced.x = box.x;
+    synced.y = box.y;
+    synced.active = box.active;
+    synced.respawnAt = box.respawnAt;
+  });
 }
 
 /**

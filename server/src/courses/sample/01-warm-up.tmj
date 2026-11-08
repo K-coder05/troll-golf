@@ -109,6 +109,13 @@
      "x": 400,
      "y": 340,
      "point": true
+    },
+    {
+     "id": 11,
+     "class": "ItemBox",
+     "x": 600,
+     "y": 110,
+     "point": true
     }
    ]
   }

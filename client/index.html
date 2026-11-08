@@ -69,7 +69,7 @@
         padding: 8px 16px; border-radius: 6px; background: rgba(120,20,20,0.85); font-weight: 600; white-space: nowrap;
       }
       #spectate {
-        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); pointer-events: none;
+        position: fixed; bottom: 104px; left: 50%; transform: translateX(-50%); pointer-events: none;
         padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,0.55); font-size: 14px; white-space: nowrap;
       }
       @media (max-width: 600px) {
@@ -129,6 +129,25 @@
       #gods-detail:empty { display: none; }
       @keyframes gods-in { from { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
       @media (max-width: 600px) { #gods-text { font-size: 20px; } #gods-banner { white-space: normal; width: calc(100% - 32px); } }
+      #item-slot {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 5;
+        width: 76px; height: 76px; border-radius: 14px; display: grid; place-items: center; align-content: center;
+        background: rgba(0,0,0,0.55); border: 3px solid var(--accent); cursor: pointer; user-select: none;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      }
+      #item-slot.empty { border-color: rgba(255,255,255,0.25); cursor: default; }
+      #item-slot.spinning { border-color: #fff; }
+      #item-slot.landed { animation: item-land 0.4s ease-out; }
+      #item-slot.denied { animation: item-shake 0.35s; }
+      #item-icon { font-size: 36px; line-height: 1; }
+      #item-name { position: absolute; top: 100%; margin-top: 2px; font-size: 12px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+      #item-note {
+        position: absolute; bottom: 100%; margin-bottom: 6px; font-size: 13px; white-space: nowrap; color: var(--error);
+        text-shadow: 0 1px 3px #000; pointer-events: none;
+      }
+      #item-slot.empty #item-icon::after { content: "?"; font-size: 28px; opacity: 0.3; }
+      @keyframes item-land { 50% { transform: translateX(-50%) scale(1.2); } }
+      @keyframes item-shake { 25% { transform: translateX(calc(-50% - 6px)); } 75% { transform: translateX(calc(-50% + 6px)); } }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -175,11 +194,14 @@
     <div id="hud" hidden>
       <div id="hole-info"></div>
       <div class="hint">Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
-      <div class="hint">Drag back from your ball and release to shoot · hold Tab to see the whole Hole and the scoreboard</div>
+      <div class="hint">Drag back from your ball and release to shoot · Space uses your Item · hold Tab to see the whole Hole and the scoreboard</div>
     </div>
     <div id="timer" hidden></div>
     <div id="standings" hidden><table id="standings-table"></table></div>
     <div id="spectate" hidden></div>
+    <div id="item-slot" class="empty" role="button" title="Use your Item (Space)" hidden>
+      <div id="item-icon"></div><div id="item-name"></div><div id="item-note"></div>
+    </div>
     <div id="connection" hidden>Connection lost · reconnecting…</div>
     <div id="banner" hidden></div>
     <div id="gods-banner" hidden><div id="gods-text"></div><div id="gods-detail"></div></div>

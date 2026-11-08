@@ -5,7 +5,7 @@ import type { AdminIntent } from "./admin";
  * network messages and connection events into these; the simulation decides
  * whether they are allowed.
  *
- * Later tickets add useItem and emote here.
+ * Later tickets add emote here.
  */
 export type Intent =
   /**
@@ -29,6 +29,11 @@ export type Intent =
   | { type: "configure"; courseId?: string }
   /** angle: radians, direction of travel (0 = +x, clockwise on screen). power: 0..1 of max. */
   | { type: "shoot"; angle: number; power: number }
+  /**
+   * Use the held Item. Untrusted: `targetId` (opponent Items) and `point`
+   * (aimed and placed Items) are validated by the Item pipeline (items.ts).
+   */
+  | { type: "useItem"; targetId?: unknown; point?: unknown }
   /**
    * Use an Admin Power. Untrusted: the simulation checks that the sender is
    * the Admin and validates power, mode and params (see admin.ts).
@@ -77,6 +82,14 @@ export type IntentRejection =
   /** Terrain Paint `extend` with no stroke to carry on this Hole. */
   | "no_stroke"
   /** The Hole already has as many terrain edits (or points) as synced state allows. */
-  | "terrain_full";
+  | "terrain_full"
+  /** useItem with an empty item slot. */
+  | "no_item"
+  /** useItem while the roulette is still spinning. */
+  | "item_not_ready"
+  /** The held Item has no use handler yet (only possible through Give Item before tickets 15-19). */
+  | "item_unavailable"
+  /** Mulligan with no shot to take back on this Hole. */
+  | "no_shot";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };
