@@ -7,6 +7,8 @@
  * inside the simulation and never reaches this type.
  */
 
+import type { TerrainEdit } from "./terrain";
+
 export type Phase = "lobby" | "countdown" | "playing" | "holeEnd" | "gameEnd";
 
 export type ChaosLevel = "chill" | "normal" | "unhinged";
@@ -108,4 +110,11 @@ export interface RoomState {
   obstacleTimeMs: number;
   settings: GameSettings;
   players: Record<string, PlayerState>;
+  /**
+   * Changes to the ground made during this Hole (Terrain Paint, later Spawn
+   * Wall), oldest first; later edits win where they overlap. Replayed by every
+   * client, so a late joiner or a reconnecting Player sees the same terrain.
+   * Emptied when a new Hole starts. Never says who made an edit.
+   */
+  terrainEdits: TerrainEdit[];
 }

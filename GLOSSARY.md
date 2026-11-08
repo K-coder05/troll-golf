@@ -91,3 +91,7 @@ Using an Admin Power with full spectacle and a Golf Gods banner.
 
 **Nuke**:
 The Admin Power that blasts every ball on the course. **Wipe** sends every ball back to the Tee and keeps Strokes. **Reset** replays the Hole and wipes its Strokes.
+
+**Terrain edit**:
+A change to the ground made during a Hole: a Terrain Paint stroke (Ice, Sand, Water or Void), later a Spawn Wall. Edits are part of the public room state, act exactly like the Hole's own terrain (later ones win where they overlap), never say who made them, and are cleared when the next Hole starts.
+_Avoid_: Decal, overlay

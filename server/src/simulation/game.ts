@@ -14,11 +14,19 @@ import {
   type CourseSummary,
   type GameSettings,
   type NukeAftermath,
+  type PaintStrokeEdit,
   type PlayerState,
   type RoomState,
   type Vec2,
 } from "@troll-golf/shared";
-import { createAdminPowers, type AdminBallControl, type AdminCupControl, type AdminLogEntry, type AdminNukeControl } from "./admin";
+import {
+  createAdminPowers,
+  type AdminBallControl,
+  type AdminCupControl,
+  type AdminLogEntry,
+  type AdminNukeControl,
+  type AdminTerrainControl,
+} from "./admin";
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
@@ -26,6 +34,7 @@ import { PHYSICS_STEP_MS, PhysicsWorld } from "./physics";
 import { ADMIN_POWERS } from "./powers";
 import type { Rng } from "./random";
 import { courseSurfaces, isHazard, pointInPolygon, shotPowerFactor, SURFACE_DAMPING } from "./surfaces";
+import { createTerrain, type Terrain } from "./terrain";
 
 export const DEFAULT_SETTINGS: GameSettings = {
   chaosLevel: "normal",
@@ -52,6 +61,16 @@ export const BOOST_IMPULSE = 500;
  * on for about 150 px.
  */
 export const CUP_CAPTURE_SPEED = 220;
+/**
+ * Synced-state budget for terrain edits per Hole: at most this many edits,
+ * this many points in all, and this many points per stroke (a longer brush
+ * stroke carries on as a new one). Every client gets the whole list.
+ */
+export const MAX_TERRAIN_EDITS = 48;
+export const MAX_TERRAIN_POINTS = 1500;
+export const MAX_STROKE_POINTS = 64;
+/** A brush point closer than this fraction of the brush radius to the previous one adds nothing and is dropped. */
+const STROKE_SPACING = 0.4;
 /** The 3-2-1 before each Hole. */
 export const COUNTDOWN_MS = 3000;
 /** The scoreboard between Holes. */
@@ -164,6 +183,7 @@ export function createGame(options: CreateGameOptions): Game {
     obstacleTimeMs: 0,
     settings: { ...DEFAULT_SETTINGS, ...options.settings },
     players: {},
+    terrainEdits: [],
   };
   let events: GameEvent[] = [];
   let joinCount = 0;
@@ -176,8 +196,13 @@ export function createGame(options: CreateGameOptions): Game {
 
   const currentHole = () => course.holes[state.holeIndex]!;
 
-  // The physics world and surface lookup of the current Hole, rebuilt by startHole().
-  let surfaces = courseSurfaces(currentHole());
+  // The surface lookup of the current Hole: its own zones under the terrain
+  // edits (which live in state.terrainEdits). Rebuilt by startHole().
+  let surfaces: Terrain = createTerrain(courseSurfaces(currentHole()), state.terrainEdits);
+  // The Admin's current brush stroke (Terrain Paint), by edit id; next edit id. Server-only.
+  let activeStroke: number | null = null;
+  let nextEditId = 1;
+  // The physics world of the current Hole, rebuilt by startHole().
   let physics = newPhysicsWorld();
   // Boost Pads / Teleporters a ball is currently inside, so each fires once per entry.
   const insidePads = new Map<string, Set<number>>();
@@ -212,6 +237,7 @@ export function createGame(options: CreateGameOptions): Game {
     balls: ballControl(),
     nukes: nukeControl(),
     cup: cupControl(),
+    terrain: terrainControl(),
   });
 
   // ---- Ball Grab: the Admin holds one ball at a time ----
@@ -399,6 +425,109 @@ export function createGame(options: CreateGameOptions): Game {
       cup.y = next.y;
       return;
     }
+  }
+
+  // ---- Terrain Paint ----
+
+  /** Fresh terrain for the current Hole: its own zones, no edits. */
+  function resetTerrain(): void {
+    state.terrainEdits = [];
+    surfaces = createTerrain(courseSurfaces(currentHole()), state.terrainEdits);
+    activeStroke = null;
+  }
+
+  function terrainControl(): AdminTerrainControl {
+    /** Into the Hole, rounded to whole px (smaller patches). */
+    const clampToHole = (p: Vec2): Vec2 => {
+      const { width, height } = currentHole();
+      return { x: Math.round(clamp(p.x, 0, width)), y: Math.round(clamp(p.y, 0, height)) };
+    };
+    const full = (newPoints: number) =>
+      state.terrainEdits.length >= MAX_TERRAIN_EDITS || surfaces.pointCount + newPoints > MAX_TERRAIN_POINTS;
+
+    /** Points far enough from the one before (the stroke's last, if any) to add something. */
+    function spaced(points: readonly Vec2[], radius: number, after: Vec2 | undefined): Vec2[] {
+      const kept: Vec2[] = [];
+      let last = after;
+      for (const raw of points) {
+        const p = clampToHole(raw);
+        if (last && Math.hypot(p.x - last.x, p.y - last.y) < radius * STROKE_SPACING) continue;
+        kept.push(p);
+        last = p;
+      }
+      return kept;
+    }
+
+    function newStroke(base: Omit<PaintStrokeEdit, "id" | "points">, points: Vec2[]): PaintStrokeEdit {
+      const stroke: PaintStrokeEdit = { ...base, id: nextEditId++, points: [] };
+      stroke.points.push(...points);
+      surfaces.add(stroke);
+      activeStroke = stroke.id;
+      return stroke;
+    }
+
+    return {
+      paint(surface, radius, rawPoints, durationMs) {
+        const points = spaced(rawPoints, radius, undefined).slice(0, MAX_STROKE_POINTS);
+        if (full(points.length)) return { ok: false, reason: "terrain_full" };
+        const expiresAt = durationMs !== undefined ? clock.now() + durationMs : 0;
+        newStroke({ kind: "paint", surface, radius, expiresAt }, points);
+        return { ok: true };
+      },
+      extend(rawPoints) {
+        const found = state.terrainEdits.find((e) => e.id === activeStroke);
+        if (!found || found.kind !== "paint") return { ok: false, reason: "no_stroke" };
+        let stroke = found;
+        const points = spaced(rawPoints, stroke.radius, stroke.points.at(-1));
+        if (points.length > 0 && surfaces.pointCount + points.length > MAX_TERRAIN_POINTS) return { ok: false, reason: "terrain_full" };
+        for (const p of points) {
+          if (stroke.points.length >= MAX_STROKE_POINTS) {
+            // A long stroke carries on as a new one starting where it ended.
+            if (state.terrainEdits.length >= MAX_TERRAIN_EDITS) return { ok: false, reason: "terrain_full" };
+            const { kind, surface, radius, expiresAt } = stroke;
+            stroke = newStroke({ kind, surface, radius, expiresAt }, [stroke.points.at(-1)!]);
+          }
+          surfaces.extend(stroke, [p]);
+        }
+        return { ok: true };
+      },
+      clear() {
+        activeStroke = null;
+        return surfaces.remove((e) => e.kind === "paint").length;
+      },
+    };
+  }
+
+  /** Edits whose time is up disappear. */
+  function expireTerrain(): void {
+    const now = clock.now();
+    surfaces.remove((e) => e.expiresAt > 0 && e.expiresAt <= now);
+  }
+
+  /**
+   * Where a sunk ball goes back to: its Rest Spot, unless the ground there has
+   * since become Water or Void (painted over), in which case the nearest dry
+   * spot around it, else the Tee.
+   */
+  function dryReturnSpot(from: Vec2): Vec2 {
+    const dry = (p: Vec2) =>
+      legalBallSpot(p) &&
+      [p, { x: p.x + BALL_RADIUS, y: p.y }, { x: p.x - BALL_RADIUS, y: p.y }, { x: p.x, y: p.y + BALL_RADIUS }, { x: p.x, y: p.y - BALL_RADIUS }].every(
+        (q) => !isHazard(surfaces.at(q)),
+      );
+    if (!isHazard(surfaces.at(from))) return { ...from };
+    const tee = currentHole().tee;
+    for (const centre of [from, tee]) {
+      for (let r = BALL_RADIUS * 2; r <= 1200; r += BALL_RADIUS * 2) {
+        const around = Math.max(8, Math.ceil((2 * Math.PI * r) / (BALL_RADIUS * 3)));
+        for (let k = 0; k < around; k++) {
+          const a = (k / around) * Math.PI * 2;
+          const p = { x: Math.round(centre.x + Math.cos(a) * r), y: Math.round(centre.y + Math.sin(a) * r) };
+          if (dry(p)) return p;
+        }
+      }
+    }
+    return { ...tee };
   }
 
   function nukeControl(): AdminNukeControl {
@@ -625,7 +754,7 @@ export function createGame(options: CreateGameOptions): Game {
     held = null;
     nuke = null;
     const hole = currentHole();
-    surfaces = courseSurfaces(hole);
+    resetTerrain();
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
     cupSlide = null;
@@ -742,7 +871,7 @@ export function createGame(options: CreateGameOptions): Game {
     state.pars = course.holes.map((h) => h.par);
     state.holeIndex = 0;
     const hole = currentHole();
-    surfaces = courseSurfaces(hole);
+    resetTerrain();
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
     cupSlide = null;
@@ -909,12 +1038,18 @@ export function createGame(options: CreateGameOptions): Game {
     return { ok: true };
   }
 
-  /** Water or Void: +1 Stroke and back to the Rest Spot, at rest. */
+  /**
+   * Water or Void: +1 Stroke and back to the Rest Spot, at rest. If the Rest
+   * Spot itself is now under painted Water or Void, the ball goes to the
+   * nearest dry spot instead, which becomes its Rest Spot (otherwise it would
+   * sink again and again).
+   */
   function sinkBall(player: PlayerState, at: Vec2): void {
     const ball = player.ball;
     const kind = surfaces.at(at);
     emit({ type: "fx", payload: { kind: kind === "void" ? "void" : "splash", x: at.x, y: at.y }, audience: everyone });
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
+    ball.restSpot = dryReturnSpot(ball.restSpot);
     physics.teleport(player.id, ball.restSpot);
     ball.x = ball.restSpot.x;
     ball.y = ball.restSpot.y;
@@ -1063,14 +1198,14 @@ export function createGame(options: CreateGameOptions): Game {
       ball.vx = motion.vx;
       ball.vy = motion.vy;
 
-      if (!ball.atRest) {
-        if (checkCup(player)) continue;
-        if (isHazard(surfaces.at(ball))) {
-          sinkBall(player, motion);
-          continue;
-        }
-        applyPadsAndPortals(id, ball);
+      if (!ball.atRest && checkCup(player)) continue;
+      // Resting balls too: Terrain Paint can put Water or Void under a ball that isn't moving.
+      // It sinks like any other (the return spot is always dry, so it can't sink again where it lands).
+      if (isHazard(surfaces.at(ball))) {
+        sinkBall(player, motion);
+        continue;
       }
+      if (!ball.atRest) applyPadsAndPortals(id, ball);
       const speed = Math.hypot(ball.vx, ball.vy);
 
       if (ball.atRest) {
@@ -1132,6 +1267,7 @@ export function createGame(options: CreateGameOptions): Game {
         steps++;
       }
       if (steps === MAX_STEPS_PER_CALL) pendingMs = 0;
+      if (state.phase === "playing") expireTerrain();
       advancePhase();
       updateStandings();
     },

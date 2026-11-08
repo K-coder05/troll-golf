@@ -1,5 +1,5 @@
 import type { RoomState } from "@troll-golf/shared";
-import { PlayerSchema, type RoomStateSchema } from "./schema";
+import { PlayerSchema, PointSchema, TerrainEditSchema, type RoomStateSchema } from "./schema";
 
 /**
  * Copies the simulation's public state into the synced schema. Colyseus only
@@ -51,6 +51,47 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
     synced.standing = player.standing;
     syncNumbers(synced.strokes, player.strokes);
   }
+
+  syncTerrain(target.terrainEdits, source.terrainEdits);
+}
+
+/**
+ * Terrain edits are append-mostly: a new edit goes on the end and a stroke
+ * being painted only gains points. So keep the synced prefix that still
+ * matches by id, rebuild from the first mismatch (an edit removed by clear or
+ * expiry), and append only the new points of a growing stroke.
+ */
+function syncTerrain(target: RoomStateSchema["terrainEdits"], source: Readonly<RoomState>["terrainEdits"]): void {
+  let same = 0;
+  while (same < target.length && same < source.length && target[same]!.id === source[same]!.id) same++;
+  while (target.length > same) target.pop();
+  source.forEach((edit, i) => {
+    let synced = target[i];
+    if (!synced) {
+      synced = new TerrainEditSchema();
+      synced.id = edit.id;
+      synced.kind = edit.kind;
+      synced.surface = edit.kind === "paint" ? edit.surface : "";
+      synced.radius = edit.radius;
+      target.push(synced);
+    }
+    synced.expiresAt = edit.expiresAt;
+    const points = synced.points;
+    while (points.length > edit.points.length) points.pop();
+    for (let j = 0; j < edit.points.length; j++) {
+      const p = edit.points[j]!;
+      const at = points[j];
+      if (!at) {
+        const point = new PointSchema();
+        point.x = p.x;
+        point.y = p.y;
+        points.push(point);
+      } else if (at.x !== p.x || at.y !== p.y) {
+        at.x = p.x;
+        at.y = p.y;
+      }
+    }
+  });
 }
 
 /** Write a number array in place, so only changed entries are sent. */

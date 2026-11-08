@@ -60,6 +60,25 @@ export const CupSchema = schema(
   "Cup",
 );
 
+/**
+ * One terrain edit (see TerrainEdit in @troll-golf/shared). One flat shape for
+ * every kind, told apart by `kind`: a paint stroke uses all fields; ticket
+ * 21's wall leaves `surface` empty and uses two points with `radius` as half
+ * its thickness.
+ */
+export const TerrainEditSchema = schema(
+  {
+    id: t.number(),
+    kind: t.string(),
+    surface: t.string(),
+    radius: t.number(),
+    expiresAt: t.number(),
+    points: t.array(PointSchema),
+  },
+  "TerrainEdit",
+);
+export type TerrainEditSchema = SchemaType<typeof TerrainEditSchema>;
+
 export const RoomStateSchema = schema(
   {
     code: t.string(),
@@ -75,6 +94,7 @@ export const RoomStateSchema = schema(
     obstacleTimeMs: t.number(),
     settings: SettingsSchema,
     players: t.map(PlayerSchema),
+    terrainEdits: t.array(TerrainEditSchema),
   },
   "RoomState",
 );

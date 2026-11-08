@@ -5,6 +5,7 @@ import { lipOut } from "./lipOut";
 import { moveCup } from "./moveCup";
 import { nuke } from "./nuke";
 import { scoreboardEdit } from "./scoreboardEdit";
+import { terrainPaint } from "./terrainPaint";
 
 /**
  * Every Admin Power, by id. Adding one: a params type in
@@ -18,4 +19,5 @@ export const ADMIN_POWERS: AdminPowerRegistry = {
   moveCup,
   cupSize,
   lipOut,
+  terrainPaint,
 };

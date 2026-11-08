@@ -73,6 +73,10 @@ export type IntentRejection =
   /** Nuke while another one is still pending, or with an impact point outside the Hole. */
   | "nuke_pending"
   /** Lip-Out on a Player whose ball can't drop into the Cup right now (Holed Out). */
-  | "no_ball_in_play";
+  | "no_ball_in_play"
+  /** Terrain Paint `extend` with no stroke to carry on this Hole. */
+  | "no_stroke"
+  /** The Hole already has as many terrain edits (or points) as synced state allows. */
+  | "terrain_full";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

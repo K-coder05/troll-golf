@@ -7,6 +7,8 @@
  */
 
 /** How an Admin Power is used: Stealth looks like bad luck, Loud adds spectacle and a Golf Gods banner. */
+import type { PaintSurface } from "./terrain";
+
 export type AdminMode = "stealth" | "loud";
 
 /** The only text a Loud banner ever shows. It never names the Admin. */
@@ -64,7 +66,30 @@ export interface AdminPowerParams {
    * it fires or the Hole ends.
    */
   lipOut: { targetId: string };
+  /**
+   * Terrain Paint: brush Ice, Sand, Water or Void onto the Hole. A `stroke`
+   * puts the brush down (logged, Loud banner); `extend` drags it on, adding
+   * points to the Admin's current stroke (a continuation: not logged again);
+   * `clear` removes every painted stroke of this Hole. Painted terrain acts
+   * exactly like the course's own surfaces and overrides them; later strokes
+   * win. Optional `durationSec` makes the stroke fade after that long;
+   * otherwise it lasts until the next Hole. Points outside the Hole are
+   * clamped to its edge; at most PAINT_MAX_POINTS_PER_MESSAGE per message.
+   */
+  terrainPaint:
+    | { action: "stroke"; surface: PaintSurface; radius: number; points: { x: number; y: number }[]; durationSec?: number }
+    | { action: "extend"; points: { x: number; y: number }[] }
+    | { action: "clear" };
 }
+
+/** Brush radius limits and default, px (a ball's radius is 8). */
+export const PAINT_MIN_RADIUS = 8;
+export const PAINT_MAX_RADIUS = 80;
+export const PAINT_DEFAULT_RADIUS = 24;
+/** Most points one terrainPaint message may carry; the admin client batches its brush at ~20 Hz. */
+export const PAINT_MAX_POINTS_PER_MESSAGE = 32;
+/** Longest optional lifetime of a painted stroke, s. */
+export const PAINT_MAX_DURATION_SEC = 120;
 
 /** Smallest and largest Cup capture radius (px) an Admin can set. Normal Cups are about 12. */
 export const CUP_MIN_RADIUS = 5;

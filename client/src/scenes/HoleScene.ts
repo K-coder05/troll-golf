@@ -8,7 +8,9 @@ import {
   type Phase,
   type ShootMessage,
   type SurfaceKind,
+  type PaintStrokeEdit,
   slidingWallCentre,
+  strokeSegmentCovers,
   windmillCorners,
   NUKE_SIREN_MS,
 } from "@troll-golf/shared";
@@ -27,8 +29,17 @@ interface SyncedPlayer {
   connected: boolean;
   spectating: boolean;
 }
+/** A synced terrain edit (flat schema: `surface` is "" for kinds that have none). */
+interface SyncedTerrainEdit {
+  id: number;
+  kind: string;
+  surface: string;
+  radius: number;
+  points: Iterable<{ x: number; y: number }> & { length: number };
+}
 interface SyncedState {
   phase: Phase;
+  terrainEdits?: Iterable<SyncedTerrainEdit>;
   leaderId: string;
   holeIndex: number;
   cup: CupState;
@@ -106,7 +117,12 @@ export class HoleScene extends Phaser.Scene {
   private watchChoice = "";
 
   private drawnHole: HoleMessage | null = null;
+  /** The ground: Fairway and the Hole's surface zones. */
   private course!: Phaser.GameObjects.Graphics;
+  /** On top of the ground and painted terrain: Boost Pads, Teleporters, the Tee and walls. */
+  private features!: Phaser.GameObjects.Graphics;
+  /** One drawing per terrain edit, by id, with the point count it was drawn at. */
+  private terrainDrawn = new Map<number, { g: Phaser.GameObjects.Graphics; points: number }>();
   private cup!: Phaser.GameObjects.Graphics;
   private drawnCup = "";
   private obstacles!: Phaser.GameObjects.Graphics;
@@ -136,6 +152,7 @@ export class HoleScene extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor(COLORS.outside);
     this.course = this.add.graphics().setDepth(0);
+    this.features = this.add.graphics().setDepth(0.8);
     this.cup = this.add.graphics().setDepth(1);
     this.obstacles = this.add.graphics().setDepth(3);
     this.aim = this.add.graphics().setDepth(10);
@@ -191,6 +208,7 @@ export class HoleScene extends Phaser.Scene {
     if (!this.drawnHole) return;
 
     for (const fx of this.takeFx()) this.playFx(fx);
+    this.renderTerrain();
     this.renderCup();
     this.renderObstacles();
     this.renderBalls();
@@ -304,19 +322,22 @@ export class HoleScene extends Phaser.Scene {
     g.fillStyle(COLORS.fairway).fillRect(0, 0, hole.width, hole.height);
 
     for (const zone of hole.surfaces) this.drawZone(g, zone.kind, zone.polygon);
-    for (const pad of hole.boostPads) this.drawBoostPad(g, pad.polygon, pad.angle);
+
+    // Painted terrain goes between the ground and these, which keep working under paint.
+    const f = this.features.clear();
+    for (const pad of hole.boostPads) this.drawBoostPad(f, pad.polygon, pad.angle);
     for (const pair of hole.teleporters) {
-      this.drawPortal(g, pair.a.x, pair.a.y, pair.radius);
-      this.drawPortal(g, pair.b.x, pair.b.y, pair.radius);
+      this.drawPortal(f, pair.a.x, pair.a.y, pair.radius);
+      this.drawPortal(f, pair.b.x, pair.b.y, pair.radius);
     }
 
-    g.fillStyle(COLORS.tee).fillRect(hole.tee.x - 12, hole.tee.y - 12, 24, 24);
-    g.fillStyle(COLORS.fairway).fillRect(hole.tee.x - 10, hole.tee.y - 10, 20, 20);
+    f.fillStyle(COLORS.tee).fillRect(hole.tee.x - 12, hole.tee.y - 12, 24, 24);
+    f.fillStyle(COLORS.fairway).fillRect(hole.tee.x - 10, hole.tee.y - 10, 20, 20);
 
     for (const wall of hole.walls) {
       const points = wall.map((p) => new Phaser.Math.Vector2(p.x, p.y));
-      g.fillStyle(COLORS.wall).fillPoints(points, true);
-      g.lineStyle(2, COLORS.wallEdge).strokePoints(points, true);
+      f.fillStyle(COLORS.wall).fillPoints(points, true);
+      f.lineStyle(2, COLORS.wallEdge).strokePoints(points, true);
     }
 
     const cam = this.cameras.main;
@@ -336,14 +357,88 @@ export class HoleScene extends Phaser.Scene {
     for (let y = y0 + 6; y < y1; y += 12) {
       for (let x = x0 + 6 + ((Math.round(y / 12) % 2) * 6); x < x1; x += 12) {
         if (!pointInPoly(x, y, polygon)) continue;
-        if (kind === "sand") g.fillCircle(x, y, 1.2);
-        else if (kind === "rough") g.lineBetween(x, y + 3, x + 1.5, y - 3);
-        else if (kind === "ice") g.lineBetween(x - 3, y + 3, x + 3, y - 3);
-        else if (kind === "water") g.lineBetween(x - 4, y, x, y - 2).lineBetween(x, y - 2, x + 4, y);
-        else if (kind === "void") g.fillCircle(x, y, 0.8);
+        this.drawTexel(g, kind, x, y);
       }
     }
     g.lineStyle(2, style.detail, 1).strokePoints(points, true);
+  }
+
+  /**
+   * Terrain edits from synced state, replayed in order (later ones on top),
+   * so a late joiner or a reconnecting Player sees exactly the same ground.
+   * Each edit has its own drawing, redrawn only when it gains points.
+   */
+  private renderTerrain(): void {
+    const edits = this.syncedState()?.terrainEdits;
+    const seen = new Set<number>();
+    let order = 0;
+    for (const edit of edits ?? []) {
+      seen.add(edit.id);
+      order++;
+      let drawn = this.terrainDrawn.get(edit.id);
+      if (!drawn) {
+        drawn = { g: this.add.graphics(), points: -1 };
+        this.terrainDrawn.set(edit.id, drawn);
+      }
+      // Between the ground (0) and the features (0.8), in edit order.
+      drawn.g.setDepth(0.1 + Math.min(order, 600) / 1000);
+      if (drawn.points === edit.points.length) continue;
+      drawn.points = edit.points.length;
+      drawn.g.clear();
+      if (edit.kind === "paint" && edit.surface in SURFACE_STYLE) {
+        this.drawStroke(drawn.g, {
+          kind: "paint",
+          id: edit.id,
+          surface: edit.surface as PaintStrokeEdit["surface"],
+          radius: edit.radius,
+          points: Array.from(edit.points, (p) => ({ x: p.x, y: p.y })),
+          expiresAt: 0,
+        });
+      }
+    }
+    for (const [id, drawn] of this.terrainDrawn) {
+      if (seen.has(id)) continue;
+      drawn.g.destroy();
+      this.terrainDrawn.delete(id);
+    }
+  }
+
+  /** A brush stroke drawn like a surface zone of its kind: fill, then the same texture on the same 12 px grid. */
+  private drawStroke(g: Phaser.GameObjects.Graphics, stroke: PaintStrokeEdit): void {
+    const style = SURFACE_STYLE[stroke.surface];
+    const { points, radius } = stroke;
+    if (points.length === 0) return;
+    g.fillStyle(style.fill);
+    g.lineStyle(radius * 2, style.fill);
+    for (let i = 0; i + 1 < points.length; i++) g.lineBetween(points[i]!.x, points[i]!.y, points[i + 1]!.x, points[i + 1]!.y);
+    for (const p of points) g.fillCircle(p.x, p.y, radius);
+
+    g.fillStyle(style.detail, 0.8).lineStyle(1.5, style.detail, 0.8);
+    const done = new Set<number>();
+    const segments = Math.max(1, points.length - 1);
+    for (let i = 0; i < segments; i++) {
+      const a = points[i]!;
+      const b = points[i + 1] ?? a;
+      const y0 = Math.floor((Math.min(a.y, b.y) - radius) / 12) * 12 + 6;
+      for (let y = y0; y < Math.max(a.y, b.y) + radius; y += 12) {
+        const offset = (Math.round(y / 12) % 2) * 6;
+        const x0 = Math.floor((Math.min(a.x, b.x) - radius) / 12) * 12 + 6 + offset;
+        for (let x = x0; x < Math.max(a.x, b.x) + radius; x += 12) {
+          const k = x * 100_000 + y;
+          if (done.has(k) || !strokeSegmentCovers(stroke, i, { x, y })) continue;
+          done.add(k);
+          this.drawTexel(g, stroke.surface, x, y);
+        }
+      }
+    }
+  }
+
+  private drawTexel(g: Phaser.GameObjects.Graphics, kind: SurfaceKind, x: number, y: number): void {
+    if (kind === "sand") g.fillCircle(x, y, 1.2);
+    else if (kind === "rough") g.lineBetween(x, y + 3, x + 1.5, y - 3);
+    else if (kind === "ice") g.lineBetween(x - 3, y + 3, x + 3, y - 3);
+    else if (kind === "water") g.lineBetween(x - 4, y, x, y - 2).lineBetween(x, y - 2, x + 4, y);
+    else if (kind === "void") g.fillCircle(x, y, 0.8);
   }
 
   private drawBoostPad(g: Phaser.GameObjects.Graphics, polygon: { x: number; y: number }[], angle: number): void {

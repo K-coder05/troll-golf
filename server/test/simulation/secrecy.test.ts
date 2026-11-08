@@ -111,6 +111,14 @@ function useAdminPowers(
     use("lipOut", mode, { targetId: "jay" });
     use("lipOut", mode, { targetId: "maya" });
   }
+  // Terrain Paint: a stroke, dragged on, then a clear, away from every ball (they rest on the Tee after the Reset).
+  for (const mode of ["stealth", "loud"] as const) {
+    use("terrainPaint", mode, { action: "stroke", surface: "water", radius: 30, points: [{ x: 600, y: 120 }] });
+    use("terrainPaint", mode, { action: "extend", points: [{ x: 660, y: 120 }, { x: 720, y: 140 }] }, true);
+    use("terrainPaint", mode, { action: "stroke", surface: "ice", radius: 20, points: [{ x: 500, y: 500 }, { x: 560, y: 520 }] });
+  }
+  use("terrainPaint", "stealth", { action: "clear" });
+  use("terrainPaint", "loud", { action: "stroke", surface: "sand", radius: 25, points: [{ x: 640, y: 480 }], durationSec: 1 });
 }
 
 /** Every object key anywhere in a JSON-able value. */

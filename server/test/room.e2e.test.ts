@@ -11,24 +11,46 @@ import { isValidRoomCode, ROOM_NAME, type RoomState } from "@troll-golf/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createGameServer } from "../src/app";
 
-const PORT = 25670 + Math.floor(Math.random() * 1000);
 let server: Server;
+/** Base URL of the test server, on whatever free port the OS gave it. */
+let baseUrl = "";
 const rooms: Room[] = [];
 
 const ADMIN_SECRET = "golf-gods-e2e";
 
+/** Rejects if `promise` takes longer than `ms`, so setup and teardown fail loudly instead of hanging. */
+function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} took over ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 beforeAll(async () => {
   process.env.ADMIN_SECRET = ADMIN_SECRET;
   server = createGameServer();
-  await server.listen(PORT);
+  // Port 0: the OS picks a free port. A fixed or random port can clash with
+  // another test run or dev server on the machine; Colyseus's listen() then
+  // never settles (the EADDRINUSE error is only logged), or the clients end up
+  // talking to the other process ("fetch failed" once it goes away).
+  // 127.0.0.1 rather than "localhost" so client and server agree on IPv4.
+  await within(server.listen(0, "127.0.0.1"), 5000, "server.listen");
+  const http = (server.transport as unknown as { server: import("node:http").Server }).server;
+  const address = http.address();
+  if (!address || typeof address === "string") throw new Error("Test server has no TCP address");
+  // Idle HTTP keep-alive sockets must outlive the gaps between requests, or a
+  // request can race the server closing the socket it reuses ("fetch failed").
+  http.keepAliveTimeout = 60_000;
+  baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
 afterAll(async () => {
-  await Promise.all(rooms.map((r) => r.leave().catch(() => undefined)));
-  await server.gracefullyShutdown(false);
+  await within(Promise.all(rooms.map((r) => r.leave().catch(() => undefined))), 5000, "leaving rooms").catch(() => undefined);
+  await within(server.gracefullyShutdown(false), 5000, "server shutdown");
 });
 
-const newClient = () => new Client(`http://localhost:${PORT}`);
+const newClient = () => new Client(baseUrl);
 const track = <R extends Room>(room: R) => (rooms.push(room), room);
 
 async function waitFor(check: () => boolean, timeoutMs = 2000): Promise<void> {
@@ -192,7 +214,7 @@ describe("GolfRoom over the network", () => {
     ).rejects.toThrow(/admin_taken/);
 
     await waitFor(() => mayaBundle.length === 1);
-    const url = `http://localhost:${PORT}${mayaBundle[0]}`;
+    const url = `${baseUrl}${mayaBundle[0]}`;
     const bundle = await fetch(url);
     expect(bundle.status).toBe(200);
     expect(bundle.headers.get("content-type")).toMatch(/javascript/);
@@ -200,8 +222,8 @@ describe("GolfRoom over the network", () => {
     expect(source).toContain("Scoreboard Edit");
     // One-time: the same link doesn't work twice, and made-up ones never do.
     expect((await fetch(url)).status).toBe(404);
-    expect((await fetch(`http://localhost:${PORT}/admin-bundle/${"0".repeat(48)}.js`)).status).toBe(404);
-    expect((await fetch(`http://localhost:${PORT}/admin.js`)).status).toBe(404);
+    expect((await fetch(`${baseUrl}/admin-bundle/${"0".repeat(48)}.js`)).status).toBe(404);
+    expect((await fetch(`${baseUrl}/admin.js`)).status).toBe(404);
 
     maya.send("configure", { courseId: "placeholder" });
     await waitFor(() => stateOf(ben).courseId === "placeholder");
@@ -216,6 +238,21 @@ describe("GolfRoom over the network", () => {
     expect(benBanners[0]).toEqual({ text: "👑 The Golf Gods have spoken", detail: "Ben: +2 Strokes" });
     expect(playersOf(ben).get(maya.sessionId)?.strokes[0]).toBe(0);
     expect(mayaResults[0]).toMatchObject({ ok: true, power: "scoreboardEdit", mode: "loud" });
+    // Terrain Paint: the stroke is synced terrain; a client joining afterwards replays the same list.
+    maya.send("admin", {
+      power: "terrainPaint",
+      mode: "stealth",
+      params: { action: "stroke", surface: "water", radius: 30, points: [{ x: 600, y: 100 }] },
+    });
+    maya.send("admin", { power: "terrainPaint", mode: "stealth", params: { action: "extend", points: [{ x: 700, y: 100 }] } });
+    const edits = (room: Room) => JSON.parse(JSON.stringify(stateOf(room).terrainEdits ?? [])) as unknown[];
+    const painted = [{ id: 1, kind: "paint", surface: "water", radius: 30, expiresAt: 0, points: [{ x: 600, y: 100 }, { x: 700, y: 100 }] }];
+    await waitFor(() => JSON.stringify(edits(ben)) === JSON.stringify(painted));
+    const late = listen(track(await newClient().joinById(maya.roomId, { name: "Jay", color: "#33cc66" })));
+    await waitFor(() => edits(late).length === 1);
+    expect(edits(late)).toEqual(edits(ben));
+    expect(benBanners).toHaveLength(1);
+
     await new Promise((r) => setTimeout(r, 100));
     expect(benOther).toEqual([]);
   }, 20_000);

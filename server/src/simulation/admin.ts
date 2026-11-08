@@ -4,6 +4,7 @@ import {
   type AdminPowerId,
   type AdminPowerParams,
   type NukeAftermath,
+  type PaintSurface,
   type Phase,
   type RoomState,
   type Vec2,
@@ -70,6 +71,28 @@ export interface AdminCupControl {
 }
 
 /**
+ * The Admin's brush, for Terrain Paint. Strokes go into the synced
+ * terrain-edit list and act like the course's own surfaces at once.
+ */
+export interface AdminTerrainControl {
+  /**
+   * Put the brush down: a new stroke through `points` (clamped into the Hole),
+   * which becomes the Admin's current stroke. `durationMs` makes it fade after
+   * that long. `terrain_full` when the Hole has as many edits/points as synced
+   * state allows.
+   */
+  paint(surface: PaintSurface, radius: number, points: readonly Vec2[], durationMs?: number): { ok: true } | { ok: false; reason: IntentRejection };
+  /**
+   * Drag the brush on: more points on the current stroke (a long stroke
+   * carries on as a fresh one with the same brush). `no_stroke` if there is
+   * none this Hole, `terrain_full` at the cap.
+   */
+  extend(points: readonly Vec2[]): { ok: true } | { ok: false; reason: IntentRejection };
+  /** Remove every painted stroke of this Hole. Returns how many there were. */
+  clear(): number;
+}
+
+/**
  * What a handler may touch. Deliberately small; later Admin Powers add the
  * hooks they need (physics, surfaces, the Cup, Items...) in game.ts, where the
  * context is built.
@@ -89,6 +112,8 @@ export interface AdminPowerContext {
   readonly nukes: AdminNukeControl;
   /** Move, resize and rig the Cup. */
   readonly cup: AdminCupControl;
+  /** Paint the ground. */
+  readonly terrain: AdminTerrainControl;
 }
 
 export type AdminPowerOutcome =
@@ -178,6 +203,7 @@ export interface AdminPowersOptions {
   balls: AdminBallControl;
   nukes: AdminNukeControl;
   cup: AdminCupControl;
+  terrain: AdminTerrainControl;
 }
 
 export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
@@ -232,6 +258,7 @@ export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
         balls: options.balls,
         nukes: options.nukes,
         cup: options.cup,
+        terrain: options.terrain,
       };
       const outcome = handler.use(ctx, params as never, mode);
       if (!outcome.ok) return reject(handler.id, outcome.reason);

@@ -6,3 +6,4 @@ export * from "./courseConverter";
 export * from "./ball";
 export * from "./obstacles";
 export * from "./admin";
+export * from "./terrain";
