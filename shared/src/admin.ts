@@ -38,7 +38,27 @@ export interface AdminPowerParams {
     | { action: "grab"; targetId: string }
     | { action: "move"; x: number; y: number }
     | { action: "release"; x: number; y: number; vx?: number; vy?: number };
+  /**
+   * Nuke: an impact point, a 3 s siren (balls untouched), then a blast that
+   * pushes every ball on the course outward from the point, then the
+   * aftermath. `aftermath` defaults to "wipe" (balls still on the course go
+   * back to the Tee, Strokes kept, timer untouched); "reset" makes everyone
+   * replay the Hole, Holed-Out Players included, with this Hole's Strokes
+   * wiped and the Hole timer restarted.
+   */
+  nuke: { x: number; y: number; aftermath?: NukeAftermath };
 }
+
+export type NukeAftermath = "wipe" | "reset";
+
+/** The air-raid siren and red flash before a Nuke goes off, ms. Nothing moves until it ends. */
+export const NUKE_SIREN_MS = 3000;
+/** From the blast to the aftermath (Wipe or Reset): balls fly outward in between, ms. */
+export const NUKE_BLAST_MS = 1500;
+/** Blast speed (px/s) at the impact point, falling off to NUKE_BLAST_MIN_SPEED at NUKE_BLAST_RANGE px and beyond. */
+export const NUKE_BLAST_SPEED = 1200;
+export const NUKE_BLAST_MIN_SPEED = 500;
+export const NUKE_BLAST_RANGE = 700;
 
 /** The fastest a released Ball Grab can throw a ball, px/s (a full-power shot is 1100). */
 export const MAX_THROW_SPEED = 1500;

@@ -73,9 +73,12 @@ export interface HoleMessage {
  * A one-shot visual effect at a point of the Hole. Cosmetic: carries no secrets.
  * `holeOut`: a ball dropped into the Cup. `lipOut`: a ball rolled over the Cup too fast.
  * `grab`: the Golf Gods picking a ball up or putting it down (Loud Ball Grab only).
+ * `nukeSiren`: a Nuke is incoming at (x, y): 3 s of siren and red flash (Stealth too: a Nuke is always spectacular).
+ * `nukeBlast`: it goes off: white-out, screen shake, balls fly outward from (x, y).
+ * `nukeAbort`: the Hole ended before the Nuke went off; stop the siren.
  */
 export interface FxMessage {
-  kind: "splash" | "void" | "boost" | "teleport" | "holeOut" | "lipOut" | "grab";
+  kind: "splash" | "void" | "boost" | "teleport" | "holeOut" | "lipOut" | "grab" | "nukeSiren" | "nukeBlast" | "nukeAbort";
   x: number;
   y: number;
 }

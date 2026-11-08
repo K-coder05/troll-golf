@@ -10,8 +10,10 @@ import {
   type SurfaceKind,
   slidingWallCentre,
   windmillCorners,
+  NUKE_SIREN_MS,
 } from "@troll-golf/shared";
 import * as Phaser from "phaser";
+import { startSiren } from "../fx/siren";
 import { SnapshotBuffer, type Point } from "../net/interpolation";
 import type { AdminHit, AdminView } from "../adminHost";
 import type { HudView } from "../ui/hud";
@@ -369,6 +371,10 @@ export class HoleScene extends Phaser.Scene {
 
   /** Short expanding ring and droplets at a point. */
   private playFx(fx: FxMessage): void {
+    if (fx.kind === "nukeSiren" || fx.kind === "nukeBlast" || fx.kind === "nukeAbort") {
+      this.playNukeFx(fx);
+      return;
+    }
     const colour = {
       splash: 0xcfe6ff,
       void: 0x8e44ad,
@@ -393,6 +399,62 @@ export class HoleScene extends Phaser.Scene {
         duration: 500,
         onComplete: () => drop.destroy(),
       });
+    }
+  }
+
+  private nukeOverlay: Phaser.GameObjects.Rectangle | null = null;
+  private sirenStop: (() => void) | null = null;
+
+  /**
+   * A Nuke, as everyone sees it (Stealth or Loud alike): 3 s of pulsing red
+   * flash and an air-raid siren; at the blast a white-out, screen shake and a
+   * shockwave ring. Nothing here says who launched it.
+   */
+  private playNukeFx(fx: FxMessage): void {
+    this.stopSiren();
+    if (fx.kind === "nukeSiren") {
+      const overlay = this.add
+        .rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000, 0)
+        .setOrigin(0)
+        .setScrollFactor(0)
+        .setDepth(30);
+      this.nukeOverlay = overlay;
+      this.tweens.add({
+        targets: overlay,
+        alpha: { from: 0, to: 0.4 },
+        duration: 500,
+        yoyo: true,
+        repeat: 2,
+        onComplete: () => this.clearNukeOverlay(overlay),
+      });
+      this.sirenStop = startSiren(NUKE_SIREN_MS);
+      return;
+    }
+    if (fx.kind === "nukeAbort") return;
+    // The blast.
+    const overlay = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0xffffff, 1)
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(31);
+    this.nukeOverlay = overlay;
+    this.tweens.add({ targets: overlay, alpha: 0, duration: 1200, delay: 250, onComplete: () => this.clearNukeOverlay(overlay) });
+    this.cameras.main.shake(900, 0.02);
+    const ring = this.add.circle(fx.x, fx.y, 10).setStrokeStyle(6, 0xffffff).setDepth(9);
+    this.tweens.add({ targets: ring, scale: 90, alpha: 0, duration: 900, onComplete: () => ring.destroy() });
+  }
+
+  private clearNukeOverlay(overlay: Phaser.GameObjects.Rectangle): void {
+    overlay.destroy();
+    if (this.nukeOverlay === overlay) this.nukeOverlay = null;
+  }
+
+  private stopSiren(): void {
+    this.sirenStop?.();
+    this.sirenStop = null;
+    if (this.nukeOverlay) {
+      this.tweens.killTweensOf(this.nukeOverlay);
+      this.clearNukeOverlay(this.nukeOverlay);
     }
   }
 

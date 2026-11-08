@@ -69,6 +69,8 @@ export type IntentRejection =
   /** Ball Grab on a ball that isn't in play (Holed Out, disconnected, a waiting late joiner) or outside the playing phase. */
   | "not_in_play"
   /** Ball Grab move or release with no ball held. */
-  | "not_holding";
+  | "not_holding"
+  /** Nuke while another one is still pending, or with an impact point outside the Hole. */
+  | "nuke_pending";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

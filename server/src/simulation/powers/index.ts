@@ -1,5 +1,6 @@
 import type { AdminPowerRegistry } from "../admin";
 import { ballGrab } from "./ballGrab";
+import { nuke } from "./nuke";
 import { scoreboardEdit } from "./scoreboardEdit";
 
 /**
@@ -10,4 +11,5 @@ import { scoreboardEdit } from "./scoreboardEdit";
 export const ADMIN_POWERS: AdminPowerRegistry = {
   scoreboardEdit,
   ballGrab,
+  nuke,
 };

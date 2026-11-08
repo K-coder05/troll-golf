@@ -2,17 +2,23 @@ import {
   BALL_RADIUS,
   MAX_PLAYERS,
   MAX_THROW_SPEED,
+  NUKE_BLAST_MIN_SPEED,
+  NUKE_BLAST_MS,
+  NUKE_BLAST_RANGE,
+  NUKE_BLAST_SPEED,
+  NUKE_SIREN_MS,
   REST_DURATION_MS,
   REST_SPEED,
   type AdminMode,
   type CourseData,
   type CourseSummary,
   type GameSettings,
+  type NukeAftermath,
   type PlayerState,
   type RoomState,
   type Vec2,
 } from "@troll-golf/shared";
-import { createAdminPowers, type AdminBallControl, type AdminLogEntry } from "./admin";
+import { createAdminPowers, type AdminBallControl, type AdminLogEntry, type AdminNukeControl } from "./admin";
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
@@ -198,6 +204,7 @@ export function createGame(options: CreateGameOptions): Game {
     emit,
     updateStandings: () => updateStandings(),
     balls: ballControl(),
+    nukes: nukeControl(),
   });
 
   // ---- Ball Grab: the Admin holds one ball at a time ----
@@ -308,6 +315,121 @@ export function createGame(options: CreateGameOptions): Game {
     if (player && state.phase === "playing" && hasBallInPlay(player)) putDown(id, player.ball, undefined);
     else if (player) player.ball.atRest = true;
     held = null;
+  }
+
+  // ---- Nuke: siren, blast, aftermath ----
+
+  /**
+   * The Nuke in progress, if any (only one at a time). Timed by the injected
+   * Clock from `advancePhase`, so it is deterministic and no client decides
+   * anything. Server-only, never synced.
+   *
+   * - siren (until `blastAt`): fx only; no ball is touched.
+   * - blast (at `blastAt`): every ball with a body is pushed outward from the
+   *   impact point. A held ball is put down first. Holed-Out, disconnected and
+   *   spectating balls have no body and don't move.
+   * - aftermath (at `doneAt`): Wipe or Reset.
+   * It is cancelled (fx `nukeAbort`) if the Hole ends first, and dropped by a new Hole.
+   */
+  let nuke: { x: number; y: number; aftermath: NukeAftermath; blastAt: number; doneAt: number; blasted: boolean } | null = null;
+
+  function nukeControl(): AdminNukeControl {
+    return {
+      launch(x, y, aftermath) {
+        if (nuke) return { ok: false, reason: "nuke_pending" };
+        const { width, height } = currentHole();
+        if (x < 0 || y < 0 || x > width || y > height) return { ok: false, reason: "invalid_payload" };
+        const now = clock.now();
+        nuke = { x, y, aftermath, blastAt: now + NUKE_SIREN_MS, doneAt: now + NUKE_SIREN_MS + NUKE_BLAST_MS, blasted: false };
+        emit({ type: "fx", payload: { kind: "nukeSiren", x, y }, audience: everyone });
+        return { ok: true };
+      },
+    };
+  }
+
+  function advanceNuke(): void {
+    if (!nuke) return;
+    const now = clock.now();
+    if (!nuke.blasted && now >= nuke.blastAt) blastBalls(nuke.x, nuke.y);
+    if (nuke.blasted && now >= nuke.doneAt) {
+      const { aftermath } = nuke;
+      nuke = null;
+      dropHeld();
+      if (aftermath === "reset") resetHole();
+      else wipeBalls();
+    }
+  }
+
+  /** Push every ball with a body away from the impact point; the nearer, the harder. */
+  function blastBalls(x: number, y: number): void {
+    if (!nuke) return;
+    nuke.blasted = true;
+    dropHeld();
+    emit({ type: "fx", payload: { kind: "nukeBlast", x, y }, audience: everyone });
+    for (const player of Object.values(state.players)) {
+      if (!physics.hasBall(player.id)) continue;
+      const ball = player.ball;
+      const dx = ball.x - x;
+      const dy = ball.y - y;
+      const distance = Math.hypot(dx, dy);
+      const angle = distance < 1 ? options.rng.next() * Math.PI * 2 : Math.atan2(dy, dx);
+      const falloff = Math.max(0, 1 - distance / NUKE_BLAST_RANGE);
+      const speed = NUKE_BLAST_MIN_SPEED + (NUKE_BLAST_SPEED - NUKE_BLAST_MIN_SPEED) * falloff;
+      const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+      physics.setVelocity(player.id, velocity);
+      ball.vx = velocity.x;
+      ball.vy = velocity.y;
+      ball.atRest = false;
+      slowSteps.set(player.id, 0);
+    }
+  }
+
+  /** Put a ball on the Tee at rest (with a fresh body if it should have one). */
+  function sendToTee(player: PlayerState, taken: Vec2[]): void {
+    physics.removeBall(player.id);
+    forgetBall(player.id);
+    const spot = teeSpot(taken);
+    taken.push(spot);
+    placeOnTee(player, spot);
+    addBody(player);
+  }
+
+  /**
+   * Wipe: every ball still on the course goes back to the Tee at rest
+   * (disconnected ones too; they have no body until they return). Strokes are
+   * kept, Holed-Out Players and waiting late joiners are untouched, the Hole
+   * timer keeps running, and so do the obstacles.
+   */
+  function wipeBalls(): void {
+    const taken: Vec2[] = [];
+    for (const player of Object.values(state.players)) {
+      if (player.holedOut || player.spectating) continue;
+      sendToTee(player, taken);
+    }
+  }
+
+  /**
+   * Reset: everyone replays the Hole. Holed-Out Players come back, every ball
+   * is on the Tee at rest, this Hole's Strokes are zeroed and the Hole timer
+   * restarts. Waiting late joiners keep their scored Hole and keep spectating.
+   * The world isn't rebuilt, so obstacles keep their time and the Cup stays
+   * wherever it is.
+   */
+  function resetHole(): void {
+    const taken: Vec2[] = [];
+    for (const player of Object.values(state.players)) {
+      if (player.spectating) continue;
+      player.strokes[state.holeIndex] = 0;
+      sendToTee(player, taken);
+    }
+    state.holeEndsAt = clock.now() + state.settings.holeTimerSec * 1000;
+    state.phaseEndsAt = state.holeEndsAt;
+  }
+
+  function cancelNuke(): void {
+    if (!nuke) return;
+    emit({ type: "fx", payload: { kind: "nukeAbort", x: nuke.x, y: nuke.y }, audience: everyone });
+    nuke = null;
   }
 
   function newPhysicsWorld(): PhysicsWorld {
@@ -432,6 +554,7 @@ export function createGame(options: CreateGameOptions): Game {
   function startHole(index: number): void {
     state.holeIndex = index;
     held = null;
+    nuke = null;
     const hole = currentHole();
     surfaces = courseSurfaces(hole);
     physics = newPhysicsWorld();
@@ -465,6 +588,7 @@ export function createGame(options: CreateGameOptions): Game {
     const par = currentHole().par;
     const cap = par + state.settings.strokeCapOverPar;
     dropHeld();
+    cancelNuke();
     for (const player of Object.values(state.players)) {
       if (player.holedOut || player.spectating) continue;
       if (physics.hasBall(player.id)) physics.stop(player.id);
@@ -501,6 +625,7 @@ export function createGame(options: CreateGameOptions): Game {
         const players = Object.values(state.players).filter((p) => p.connected && !p.spectating);
         const everyoneIn = players.length > 0 && players.every((p) => p.holedOut);
         if (everyoneIn || now >= state.holeEndsAt) endHole();
+        else advanceNuke();
         break;
       }
       case "holeEnd":

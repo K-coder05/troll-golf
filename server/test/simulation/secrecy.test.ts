@@ -44,6 +44,11 @@ function playScriptedGame(adminId: Id): Observed {
     expect(t.adminPower(adminId, power, params, mode)).toEqual({ ok: true });
     t.advance(500);
     const events = record();
+    // A Nuke runs its siren, blast and aftermath (4.5 s) before the next power.
+    if (power === "nuke") {
+      t.advance(5000);
+      record();
+    }
     // A continuation (a Ball Grab drag or release) is part of the use that started it.
     if (!continuation) {
       observed.powerEvents.push({ power, mode, targetId: (params as { targetId?: string }).targetId ?? "", events });
@@ -94,6 +99,9 @@ function useAdminPowers(
       use("ballGrab", mode, { action: "release", x, y }, true);
     }
   }
+  // Nuke: siren, blast and both aftermaths, in both modes. (use() waits 500 ms; the next use waits out the rest.)
+  use("nuke", "stealth", { x: 600, y: 300 });
+  use("nuke", "loud", { x: 300, y: 300, aftermath: "reset" });
 }
 
 /** Every object key anywhere in a JSON-able value. */
@@ -147,7 +155,9 @@ describe("secrecy of the Admin", () => {
   it("Loud uses send the Golf Gods banner to everyone; Stealth uses send nothing at all", () => {
     for (const use of asMaya.powerEvents) {
       if (use.mode === "stealth") {
-        expect(use.events).toEqual([]);
+        // A Nuke is spectacular even in Stealth: its fx go to everyone (but never name anyone).
+        if (use.power === "nuke") expect(use.events.every((e) => e.type === "fx")).toBe(true);
+        else expect(use.events).toEqual([]);
       } else {
         const banners = use.events.filter((e) => e.type === "banner");
         expect(banners).toHaveLength(1);

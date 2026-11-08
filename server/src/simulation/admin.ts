@@ -3,6 +3,7 @@ import {
   type AdminMode,
   type AdminPowerId,
   type AdminPowerParams,
+  type NukeAftermath,
   type Phase,
   type RoomState,
   type Vec2,
@@ -47,6 +48,15 @@ export interface AdminBallControl {
   release(x: number, y: number, velocity?: Vec2): boolean;
 }
 
+/** The Admin's Nuke, a timed sequence the simulation runs (siren, blast, aftermath). */
+export interface AdminNukeControl {
+  /**
+   * Start a Nuke at (x, y). Only one can be pending: `nuke_pending` while
+   * another is. The impact point must be inside the Hole (`invalid_payload`).
+   */
+  launch(x: number, y: number, aftermath: NukeAftermath): { ok: true } | { ok: false; reason: IntentRejection };
+}
+
 /**
  * What a handler may touch. Deliberately small; later Admin Powers add the
  * hooks they need (physics, surfaces, the Cup, Items...) in game.ts, where the
@@ -63,6 +73,8 @@ export interface AdminPowerContext {
   updateStandings(): void;
   /** Hold, move and release balls (Ball Grab). */
   readonly balls: AdminBallControl;
+  /** Launch a Nuke. */
+  readonly nukes: AdminNukeControl;
 }
 
 export type AdminPowerOutcome =
@@ -150,6 +162,7 @@ export interface AdminPowersOptions {
   emit(event: GameEvent): void;
   updateStandings(): void;
   balls: AdminBallControl;
+  nukes: AdminNukeControl;
 }
 
 export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
@@ -202,6 +215,7 @@ export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
         emit,
         updateStandings: options.updateStandings,
         balls: options.balls,
+        nukes: options.nukes,
       };
       const outcome = handler.use(ctx, params as never, mode);
       if (!outcome.ok) return reject(handler.id, outcome.reason);
