@@ -51,6 +51,15 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
       this.game.handleIntent(client.sessionId, { type: "useItem", targetId, point });
       this.flush();
     });
+    // Aim updates only feed the Admin's x-ray; throttle them per connection.
+    const lastAim = new Map<string, number>();
+    this.onMessage("aim", (client, message: unknown) => {
+      const { angle, power, active } = (message ?? {}) as { angle?: unknown; power?: unknown; active?: unknown };
+      const now = Date.now();
+      if (active !== false && now - (lastAim.get(client.sessionId) ?? 0) < 50) return;
+      lastAim.set(client.sessionId, now);
+      this.game.handleIntent(client.sessionId, { type: "aim", angle, power, active });
+    });
     // Mashing out of a Freeze: the simulation ignores it unless an Effect reacts.
     this.onMessage("mash", (client) => {
       this.game.handleIntent(client.sessionId, { type: "mash" });

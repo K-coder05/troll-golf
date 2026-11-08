@@ -3,6 +3,7 @@ import {
   type AdminMode,
   type AdminPowerId,
   type AdminPowerParams,
+  type ItemId,
   type NukeAftermath,
   type PaintSurface,
   type Phase,
@@ -93,6 +94,20 @@ export interface AdminTerrainControl {
 }
 
 /**
+ * The Admin's hold on Items: Give Item, Rig the Box and God Mode. None of it
+ * goes through the Item Hit path, so Shields, the immunity window and the
+ * disabling cap never apply to it.
+ */
+export interface AdminItemControl {
+  /** Put an Item in the Player's slot, replacing any held. Only the recipient is told. */
+  give(playerId: string, item: ItemId): void;
+  /** The Player's next Item Box gives exactly this Item (replacing an earlier rig). Server-only. */
+  rig(playerId: string, item: ItemId): void;
+  /** Turn God Mode on or off; `mode` is how a blocked attack looks while on. */
+  setGodMode(enabled: boolean, mode: AdminMode): void;
+}
+
+/**
  * What a handler may touch. Deliberately small; later Admin Powers add the
  * hooks they need (physics, surfaces, the Cup, Items...) in game.ts, where the
  * context is built.
@@ -114,6 +129,8 @@ export interface AdminPowerContext {
   readonly cup: AdminCupControl;
   /** Paint the ground. */
   readonly terrain: AdminTerrainControl;
+  /** Give Items, rig boxes, God Mode. */
+  readonly items: AdminItemControl;
 }
 
 export type AdminPowerOutcome =
@@ -204,6 +221,7 @@ export interface AdminPowersOptions {
   nukes: AdminNukeControl;
   cup: AdminCupControl;
   terrain: AdminTerrainControl;
+  items: AdminItemControl;
 }
 
 export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
@@ -259,6 +277,7 @@ export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
         nukes: options.nukes,
         cup: options.cup,
         terrain: options.terrain,
+        items: options.items,
       };
       const outcome = handler.use(ctx, params as never, mode);
       if (!outcome.ok) return reject(handler.id, outcome.reason);

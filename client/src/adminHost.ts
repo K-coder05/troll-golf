@@ -33,6 +33,8 @@ export interface AdminView {
   canvas: HTMLCanvasElement;
   /** A pointer position (viewport px) as a point of the Hole (world px). */
   worldAt(clientX: number, clientY: number): { x: number; y: number };
+  /** A world point as a viewport position (px): the inverse of worldAt. */
+  screenAt(x: number, y: number): { x: number; y: number };
   /** What is at a world point: a ball in play, the Cup, or plain terrain. */
   hitTest(world: { x: number; y: number }): AdminHit;
   /** Stop the camera following the ball (while dragging your own ball it would run away from the pointer). */

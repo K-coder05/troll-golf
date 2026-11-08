@@ -7,6 +7,8 @@
  */
 
 /** How an Admin Power is used: Stealth looks like bad luck, Loud adds spectacle and a Golf Gods banner. */
+import type { EffectKind } from "./effects";
+import type { ItemId } from "./items";
 import type { PaintSurface } from "./terrain";
 
 export type AdminMode = "stealth" | "loud";
@@ -80,6 +82,46 @@ export interface AdminPowerParams {
     | { action: "stroke"; surface: PaintSurface; radius: number; points: { x: number; y: number }[]; durationSec?: number }
     | { action: "extend"; points: { x: number; y: number }[] }
     | { action: "clear" };
+  /**
+   * Give Item: put any Item in a Player's slot (the Admin's own included),
+   * replacing what they held. No roulette; only the recipient is told.
+   * Admin Powers ignore Shields, the immunity window and the disabling cap.
+   */
+  giveItem: { targetId: string; item: ItemId };
+  /**
+   * Rig the Box: the Player's next Item Box gives exactly this Item, then the
+   * rig clears. The pickup plays out as usual (same roulette, same events).
+   * Server-only until it fires; a later rig replaces an earlier one.
+   */
+  rigBox: { targetId: string; item: ItemId };
+  /**
+   * God Mode on or off: while on, the Admin is immune to every Item. The
+   * mode of the toggling message picks how a blocked attack looks: Stealth
+   * is exactly a Shield pop, Loud is a divine block with a Golf Gods banner.
+   */
+  godMode: { enabled: boolean };
+}
+
+/** Longest an aim line stays on the x-ray after the Player's last aim update, ms. */
+export const XRAY_AIM_STALE_MS = 1500;
+/** How often the Admin's x-ray data is refreshed, ms. */
+export const XRAY_INTERVAL_MS = 200;
+
+/** One Player as the x-ray shows them. Admin only. */
+export interface XrayPlayer {
+  id: string;
+  /** The held Item, or null. */
+  item: ItemId | null;
+  /** Every active Effect, hidden ones included, with who caused it. */
+  effects: { kind: EffectKind; endsAt: number; sourceId: string; visible: boolean }[];
+  /** The Player's current aim (while dragging a shot), or null. */
+  aim: { angle: number; power: number } | null;
+}
+
+/** Server -> Admin only: everything the x-ray overlay shows. Never sent to anyone else. */
+export interface XrayMessage {
+  at: number;
+  players: XrayPlayer[];
 }
 
 /** Brush radius limits and default, px (a ball's radius is 8). */

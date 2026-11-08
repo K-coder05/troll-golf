@@ -6,8 +6,10 @@
 import type { AdminBundle } from "../adminHost";
 import { startConsole } from "./console";
 import { startRadialMenu } from "./radialMenu";
+import { startXray } from "./xray";
 
 export const mount: AdminBundle["mount"] = (host) => {
   const console = startConsole(host);
   startRadialMenu(host, console);
+  startXray(host);
 };

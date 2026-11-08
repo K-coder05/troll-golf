@@ -10,11 +10,25 @@ Admin Powers ignore Shields, the immunity window and the one-disabling-Effect ca
 
 **Blocked by:** 09, 15
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Give Item fills the target's slot, replacing any held Item. Tested through the simulation.
-- [ ] Rig the Box makes the target's next pickup give exactly the chosen Item, then clears. Rigged boxes are server-only.
-- [ ] With God Mode on, attack Items on the Admin don't land and don't count as Item Hits. In Stealth, the events other Players get match a natural Shield pop exactly (secrecy test extended).
-- [ ] Admin Powers on a Shielded, immune or already-disabled Player still take effect.
-- [ ] X-ray data is sent only to the Admin's connection; non-Admin audiences never receive it.
-- [ ] The x-ray overlay shows on the Admin's client.
+- [x] Give Item fills the target's slot, replacing any held Item. Tested through the simulation.
+- [x] Rig the Box makes the target's next pickup give exactly the chosen Item, then clears. Rigged boxes are server-only.
+- [x] With God Mode on, attack Items on the Admin don't land and don't count as Item Hits. In Stealth, the events other Players get match a natural Shield pop exactly (secrecy test extended).
+- [x] Admin Powers on a Shielded, immune or already-disabled Player still take effect.
+- [x] X-ray data is sent only to the Admin's connection; non-Admin audiences never receive it.
+- [ ] The x-ray overlay shows on the Admin's client. (built, typechecked and built; never seen in a real browser)
+
+## Comments
+
+**Implementation note (ticket 20).**
+
+Built:
+- **Powers** `giveItem {targetId, item}`, `rigBox {targetId, item}`, `godMode {enabled}` (shared `AdminPowerParams`; handlers `server/src/simulation/powers/{giveItem,rigBox,godMode}.ts`; panels `client/src/admin/powers/`; phases countdown/playing/holeEnd, God Mode also gameEnd). `AdminPowerContext.items: AdminItemControl {give, rig, setGodMode}` wraps the Item system's hooks. None go through `applyItemHit`, so Shields, immunity and the disabling cap never apply (tested on a Shielded/Frozen/immune target). Ticket 21's Invert Controls must likewise call `effects.start(..., {scaled:false})` directly.
+- **Give Item**: replaces the slot, no roulette, only the recipient gets the `item` message. Loud feed line does not name the Item.
+- **Rig the Box**: the draw still runs (same Rng rolls) and only its result is replaced, so a rigged pickup has identical events and leaves the Rng stream untouched (tested against an unrigged run). Pickup log keeps `rigged: true` (server-only).
+- **God Mode**: checked inside `applyItemHit` after targetability and before the Shield (a real Shield is kept). Blocked = no Effect, no immunity, no Item Hit; log `blocked` with `by: "god"`. Stealth emits exactly the Shield-pop fx + feed ("<Admin>'s Shield ate a Freeze Ray"), tested equal to a real Shield pop. Known limit: a keen observer can see the Admin has no Shield badge. Loud: new fx `divineBlock`, feed "The Golf Gods turned away a X", banner. The fx sits on the Admin's ball, so Loud inevitably shows where it happened. Mode is chosen by the message that toggles it. Cleared when the Admin leaves.
+- **X-ray**: new client message `aim {angle, power, active}` (HoleScene sends at 10 Hz while dragging; adapter throttles to 20 Hz; intent `aim`, stored server-side, stale after 1.5 s, cleared on shot). Server emits `xray {at, players:[{id, item, effects[{kind,endsAt,sourceId,visible}], aim}]}` every 200 ms with audience `admin` (never in state). Overlay: `client/src/admin/xray.ts`, toggled with Alt+X (off by default); `AdminView.screenAt` added for world -> screen.
+- Tests: `server/test/simulation/adminItems.test.ts` (new) and `secrecy.test.ts` extended (give/rig/godMode in both modes, x-ray only on admin audience). 319 tests in total.
+
+Not ticked: the x-ray overlay and panels were never clicked through in a real browser.

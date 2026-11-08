@@ -1,8 +1,11 @@
 import { ballGrabPanel } from "./ballGrab";
 import { cupSizePanel } from "./cupSize";
+import { giveItemPanel } from "./giveItem";
+import { godModePanel } from "./godMode";
 import { lipOutPanel } from "./lipOut";
 import { moveCupPanel } from "./moveCup";
 import { nukePanel } from "./nuke";
+import { rigBoxPanel } from "./rigBox";
 import { scoreboardEditPanel } from "./scoreboardEdit";
 import { terrainPaintPanel } from "./terrainPaint";
 import type { AdminPowerPanel } from "./types";
@@ -16,4 +19,7 @@ export const ADMIN_POWER_PANELS: readonly AdminPowerPanel[] = [
   cupSizePanel,
   lipOutPanel,
   terrainPaintPanel,
+  giveItemPanel,
+  rigBoxPanel,
+  godModePanel,
 ];

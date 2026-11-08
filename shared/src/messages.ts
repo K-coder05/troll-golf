@@ -6,7 +6,7 @@
  * is also the Colyseus message name.
  */
 
-import type { AdminBundleMessage, AdminMessage, AdminResultMessage, BannerMessage } from "./admin";
+import type { AdminBundleMessage, AdminMessage, AdminResultMessage, BannerMessage, XrayMessage } from "./admin";
 import type { HoleData } from "./course";
 import type { ItemDeniedMessage, ItemId, ItemSlotMessage, UseItemMessage } from "./items";
 
@@ -46,8 +46,20 @@ export type MashMessage = Record<string, never>;
 /** Start the game from the lobby. Room creator only. */
 export type StartMessage = Record<string, never>;
 
+/**
+ * Where the Player is aiming right now (while dragging a shot), sent at a
+ * throttled rate. Only the Admin's x-ray ever shows it; `active: false` says
+ * the drag ended.
+ */
+export interface AimMessage {
+  angle: number;
+  power: number;
+  active: boolean;
+}
+
 export interface ClientMessages {
   shoot: ShootMessage;
+  aim: AimMessage;
   configure: ConfigureMessage;
   start: StartMessage;
   /** Use the held Item. */
@@ -87,6 +99,7 @@ export interface HoleMessage {
  * `itemBox`: an Item Box shattered at (x, y) (it never says what was inside).
  * `itemUse`: `item` was used at (x, y); the client's renderer for that Item plays it.
  * `shieldPop`: a Shield absorbed an attack at (x, y) (the ball's spot).
+ * `divineBlock`: the Golf Gods turned an attack away at (x, y) (Loud God Mode only).
  * `inkScreen`: sent to the victim of Ink Splat ONLY; their screen fills with ink.
  * `itemUse` of the Golf Gun: a shot from (fromX, fromY) at (x, y); `hit` says it landed (screen shake).
  * `thaw`: a Freeze ended at (x, y): the ice cracks.
@@ -106,6 +119,7 @@ export interface FxMessage {
     | "itemBox"
     | "itemUse"
     | "shieldPop"
+    | "divineBlock"
     | "thaw"
     | "inkScreen";
   x: number;
@@ -151,6 +165,8 @@ export interface ServerMessages {
   adminBundle: AdminBundleMessage;
   /** Admin only: the outcome of an Admin Power use. */
   adminResult: AdminResultMessage;
+  /** Admin only: every Player's held Item, Effects and aim, for the x-ray overlay. */
+  xray: XrayMessage;
   /** Everyone: the Golf Gods banner of a Loud Admin Power. */
   banner: BannerMessage;
   courses: CoursesMessage;

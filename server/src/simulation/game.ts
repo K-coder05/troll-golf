@@ -23,6 +23,8 @@ import {
   type PlayerState,
   type RoomState,
   type Vec2,
+  XRAY_AIM_STALE_MS,
+  XRAY_INTERVAL_MS,
 } from "@troll-golf/shared";
 import {
   createAdminPowers,
@@ -33,7 +35,7 @@ import {
   type AdminTerrainControl,
 } from "./admin";
 import type { Clock } from "./clock";
-import { everyone, toPlayer, type GameEvent } from "./events";
+import { everyone, toAdmin, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
 import { EFFECT_DEFINITIONS } from "./effectKinds";
 import { createEffectSystem, type EffectLogEntry } from "./effects";
@@ -257,7 +259,19 @@ export function createGame(options: CreateGameOptions): Game {
     nukes: nukeControl(),
     cup: cupControl(),
     terrain: terrainControl(),
+    // Defined below; only called once the game runs. None of these go through the Item Hit path.
+    items: {
+      give: (playerId, item) => items.give(playerId, item),
+      rig: (playerId, item) => items.rig(playerId, item),
+      setGodMode: (enabled, mode) => {
+        const adminId = admin.adminId;
+        if (adminId !== null) items.setGodMode(adminId, enabled, mode);
+      },
+    },
   });
+  // Where each Player is aiming right now (only the Admin's x-ray reads it). Server-only.
+  const aims = new Map<string, { angle: number; power: number; at: number }>();
+  let xrayAccumMs = 0;
   // The Effects engine: Frozen, Shielded..., immunity windows. Visible Effects are mirrored into PlayerState.effects.
   const effects = createEffectSystem({
     state,
@@ -1187,6 +1201,8 @@ export function createGame(options: CreateGameOptions): Game {
       gone.add(playerId);
     }
     // An Admin who is gone for good frees the role for someone else with the secret.
+    if (admin.isAdmin(playerId)) items.setGodMode(playerId, false, "stealth");
+    aims.delete(playerId);
     admin.release(playerId);
     emit({ type: "feed", payload: { text: `${player.name} left` }, audience: everyone });
     if (state.creatorId === playerId) {
@@ -1199,6 +1215,52 @@ export function createGame(options: CreateGameOptions): Game {
     }
     updateStandings();
     return { ok: true };
+  }
+
+  /** Remember where a Player is aiming, for the Admin's x-ray. Nobody else ever sees it. */
+  function aim(playerId: string, angle: unknown, power: unknown, active: unknown): IntentResult {
+    const player = state.players[playerId];
+    if (!player) return { ok: false, reason: "unknown_player" };
+    if (active === false) {
+      aims.delete(playerId);
+      return { ok: true };
+    }
+    if (typeof angle !== "number" || typeof power !== "number" || !Number.isFinite(angle) || !Number.isFinite(power)) {
+      return { ok: false, reason: "invalid_payload" };
+    }
+    if (state.phase !== "playing" || !player.connected || player.spectating || player.holedOut) {
+      return { ok: false, reason: "wrong_phase" };
+    }
+    aims.set(playerId, { angle, power: clamp(power, 0, 1), at: clock.now() });
+    return { ok: true };
+  }
+
+  /** The x-ray: every Player's held Item, Effects (with sources) and aim, to the Admin's connection only. */
+  function emitXray(): void {
+    const adminId = admin.adminId;
+    if (adminId === null || !state.players[adminId]?.connected) return;
+    const now = clock.now();
+    emit({
+      type: "xray",
+      payload: {
+        at: now,
+        players: Object.values(state.players).map((p) => {
+          const a = aims.get(p.id);
+          return {
+            id: p.id,
+            item: items.held(p.id),
+            effects: effects.on(p.id).map((e) => ({
+              kind: e.kind,
+              endsAt: e.endsAt,
+              sourceId: e.sourceId,
+              visible: EFFECT_DEFINITIONS[e.kind].visible,
+            })),
+            aim: a && now - a.at <= XRAY_AIM_STALE_MS ? { angle: a.angle, power: a.power } : null,
+          };
+        }),
+      },
+      audience: toAdmin,
+    });
   }
 
   function shoot(playerId: string, angle: number, power: number): IntentResult {
@@ -1217,6 +1279,7 @@ export function createGame(options: CreateGameOptions): Game {
     // A ball held by the Admin reads as moving.
     if (held?.id === playerId || !player.ball.atRest) return { ok: false, reason: "ball_moving" };
 
+    aims.delete(playerId);
     lastShots.set(playerId, { from: { x: player.ball.x, y: player.ball.y }, penalties: 0 });
     const from = surfaces.at(player.ball);
     const speed = clamp(power, 0, 1) * MAX_SHOT_SPEED * shotPowerFactor(from);
@@ -1479,6 +1542,8 @@ export function createGame(options: CreateGameOptions): Game {
           return shoot(playerId, intent.angle, intent.power);
         case "useItem":
           return items.use(playerId, intent);
+        case "aim":
+          return aim(playerId, intent.angle, intent.power, intent.active);
         case "mash":
           return mash(playerId);
         case "admin":
@@ -1506,6 +1571,11 @@ export function createGame(options: CreateGameOptions): Game {
         effects.expire();
       }
       items.expireActive();
+      xrayAccumMs += dtMs;
+      if (xrayAccumMs >= XRAY_INTERVAL_MS) {
+        xrayAccumMs = 0;
+        if (state.phase !== "lobby") emitXray();
+      }
       advancePhase();
       updateStandings();
     },

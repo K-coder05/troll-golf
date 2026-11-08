@@ -119,6 +119,16 @@ function useAdminPowers(
   }
   use("terrainPaint", "stealth", { action: "clear" });
   use("terrainPaint", "loud", { action: "stroke", surface: "sand", radius: 25, points: [{ x: 640, y: 480 }], durationSec: 1 });
+  // Items: give (to others and to the Admin), rig a box, God Mode on and off.
+  for (const mode of ["stealth", "loud"] as const) {
+    use("giveItem", mode, { targetId: "jay", item: "freezeRay" });
+    use("giveItem", mode, { targetId: "ben", item: "shield" });
+    use("giveItem", mode, { targetId: "maya", item: "mulligan" });
+    use("rigBox", mode, { targetId: "jay", item: "inkSplat" });
+    use("rigBox", mode, { targetId: "maya", item: "swap" });
+    use("godMode", mode, { enabled: true });
+    use("godMode", mode, { enabled: false });
+  }
 }
 
 /** Every object key anywhere in a JSON-able value. */
@@ -174,13 +184,25 @@ describe("secrecy of the Admin", () => {
       if (use.mode === "stealth") {
         // A Nuke is spectacular even in Stealth: its fx go to everyone (but never name anyone).
         if (use.power === "nuke") expect(use.events.every((e) => e.type === "fx")).toBe(true);
-        else expect(use.events).toEqual([]);
+        // Give Item tells the recipient alone (their private `item` message); nothing else.
+        else if (use.power === "giveItem") {
+          expect(use.events.map((e) => e.type)).toEqual(["item"]);
+          expect(use.events[0]!.audience).toEqual({ kind: "player", playerId: use.targetId });
+        } else expect(use.events).toEqual([]);
       } else {
         const banners = use.events.filter((e) => e.type === "banner");
         expect(banners).toHaveLength(1);
         expect(banners[0]!.audience).toEqual({ kind: "everyone" });
         expect(banners[0]!.payload).toMatchObject({ text: GOLF_GODS_BANNER });
       }
+    }
+  });
+
+  it("x-ray data only ever goes to the Admin's audience", () => {
+    for (const run of [asMaya, asBen]) {
+      expect(run.events.some((e) => e.type === "xray")).toBe(false);
+      expect(run.adminEvents.some((e) => e.type === "xray")).toBe(true);
+      expect(run.adminEvents.filter((e) => e.type === "xray").every((e) => e.audience.kind === "admin")).toBe(true);
     }
   });
 

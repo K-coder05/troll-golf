@@ -42,7 +42,7 @@ export function startConsole(host: AdminHost): ConsoleController {
   const panelBox = el("div", "tga-panel-box");
   const results = el("ul", "tga-results");
   const help = el("div", "tga-muted");
-  help.textContent = "` close · 1–9 hotbar · Caps Lock = Loud";
+  help.textContent = "` close · 1–9 hotbar · Caps Lock = Loud · Alt+X x-ray";
   root.append(header, hotbarRow, list, panelBox, results, help);
   document.body.append(root);
 

@@ -6,6 +6,7 @@ import {
   type FxMessage,
   type HoleMessage,
   type Phase,
+  type AimMessage,
   type ShootMessage,
   type UseItemMessage,
   type SurfaceKind,
@@ -271,6 +272,7 @@ export class HoleScene extends Phaser.Scene {
     // A shot can only start from a ball at rest during play; drop the aim otherwise.
     if (this.aimPoint && !this.canShoot()) this.aimPoint = null;
     this.renderAim();
+    this.sendAim();
     this.renderPickerMarks();
     const hint = document.getElementById("frozen-hint");
     if (hint) hint.hidden = !this.amFrozen();
@@ -667,6 +669,15 @@ export class HoleScene extends Phaser.Scene {
       this.playShards(fx, fx.kind === "shieldPop" ? 0xb48cff : 0xd8f4ff);
       return;
     }
+    if (fx.kind === "divineBlock") {
+      // The Golf Gods turned an attack away: golden shards and two expanding rings.
+      this.playShards(fx, 0xffd24d);
+      for (const delay of [0, 120]) {
+        const ring = this.add.circle(fx.x, fx.y, 6).setStrokeStyle(3, 0xfff1a8).setDepth(9);
+        this.tweens.add({ targets: ring, scale: 6, alpha: 0, duration: 700, delay, onComplete: () => ring.destroy() });
+      }
+      return;
+    }
     const colour = {
       splash: 0xcfe6ff,
       void: 0x8e44ad,
@@ -858,6 +869,24 @@ export class HoleScene extends Phaser.Scene {
     return { angle: Math.atan2(dy, dx), power: Math.min(dragPx / MAX_DRAG_PX, 1) };
   }
 
+  private lastAimSent = 0;
+  private aimSent = false;
+
+  /** Tell the server where we are aiming (10 Hz while dragging). Only the Admin's x-ray ever shows it. */
+  private sendAim(): void {
+    const shot = this.currentShot();
+    if (shot) {
+      const now = performance.now();
+      if (now - this.lastAimSent < 100) return;
+      this.lastAimSent = now;
+      this.aimSent = true;
+      this.room.send("aim", { angle: shot.angle, power: shot.power, active: true } satisfies AimMessage);
+    } else if (this.aimSent) {
+      this.aimSent = false;
+      this.room.send("aim", { angle: 0, power: 0, active: false } satisfies AimMessage);
+    }
+  }
+
   private renderAim(): void {
     const g = this.aim.clear();
     const shot = this.currentShot();
@@ -937,6 +966,14 @@ export class HoleScene extends Phaser.Scene {
         const cup = state?.cup;
         if (cup && Phaser.Math.Distance.Between(world.x, world.y, cup.x, cup.y) <= cup.radius + 6) return { kind: "cup" };
         return { kind: "terrain" };
+      },
+      screenAt: (x, y) => {
+        const cam = this.cameras.main;
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: rect.left + ((x - cam.worldView.x) * cam.zoom * rect.width) / this.scale.width,
+          y: rect.top + ((y - cam.worldView.y) * cam.zoom * rect.height) / this.scale.height,
+        };
       },
       holdCamera: (hold) => (this.cameraHeld = hold),
     };

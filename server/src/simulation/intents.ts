@@ -34,6 +34,11 @@ export type Intent =
    * (aimed and placed Items) are validated by the Item pipeline (items.ts).
    */
   | { type: "useItem"; targetId?: unknown; point?: unknown }
+  /**
+   * Where the Player is aiming (untrusted). Only feeds the Admin's x-ray;
+   * `active: false` clears it.
+   */
+  | { type: "aim"; angle: unknown; power: unknown; active?: unknown }
   /** One mash click (break out of a Freeze sooner). */
   | { type: "mash" }
   /**

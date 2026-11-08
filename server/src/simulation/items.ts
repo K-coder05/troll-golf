@@ -1,5 +1,7 @@
 import {
   BALL_RADIUS,
+  GOLF_GODS_BANNER,
+  type AdminMode,
   ITEM_CATEGORIES,
   type HoleData,
   type ItemCatalogue,
@@ -105,7 +107,7 @@ export interface ItemUseRequest {
  */
 export type ItemHitResult =
   | { result: "landed" }
-  | { result: "blocked"; by: "shield" }
+  | { result: "blocked"; by: "shield" | "god" }
   | { result: "missed"; reason: IntentRejection };
 
 export interface ItemContext {
@@ -218,7 +220,7 @@ export type ItemLogEntry =
       playerId: string;
       targetId: string;
       item: ItemId;
-      by: "shield";
+      by: "shield" | "god";
     };
 
 // ---- The draw ----------------------------------------------------------------
@@ -342,7 +344,7 @@ export interface ItemSystem {
    * handlers (through ItemContext.hit) and for Items that hit later (Banana
    * Mine, ticket 18). In order: the target must be targetable for this Item
    * (in play, not immune, not already disabled if the Item is disabling);
-   * (ticket 20: God Mode blocks it here, looking like a Shield pop); a
+   * (God Mode blocks it here: a Shield pop in Stealth); a
    * Shield eats it (fx `shieldPop`, feed line); otherwise `land()` runs, the
    * target becomes immune for 3 s and the attacker gets an Item Hit. Every
    * hit and block is logged. Admin Powers never come through here.
@@ -358,6 +360,8 @@ export interface ItemSystem {
   give(playerId: string, item: ItemId): void;
   /** The Player's next box gives exactly this Item, then the rig clears (Rig the Box, ticket 20). Server-only. */
   rig(playerId: string, item: ItemId): void;
+  /** God Mode for the Admin on or off; `mode` is how a block looks (see applyItemHit). */
+  setGodMode(adminId: string, enabled: boolean, mode: AdminMode): void;
   /** Tell the Player what is in their slot (on join and reconnect). */
   sendSlot(playerId: string): void;
   /** The Player is gone from the room (lobby leave). */
@@ -375,6 +379,8 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
   // Rig the Box: the Item each Player's next box gives. Server-only.
   const rigged = new Map<string, ItemId>();
   const log: ItemLogEntry[] = [];
+  // God Mode: the Admin's immunity to every Item, and how a block looks. Server-only.
+  let god: { adminId: string; mode: AdminMode } | null = null;
   // Item Hits per attacker this game. Server-only until the game ends (then copied into PlayerState.itemHits).
   const hits = new Map<string, number>();
   const { effects } = options;
@@ -404,12 +410,12 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     const playerCount = Object.keys(state.players).length;
     const row = oddsRowFor(player.standing, playerCount);
     const forced = rigged.get(player.id);
-    let drawn: { category: ItemCategory; item: ItemId } | null;
+    // The draw always happens, so the Rng stream is the same whether or not
+    // the box was rigged; a rig only replaces its result.
+    let drawn = drawItem(rng, tuning.odds, row, catalogue, available);
     if (forced) {
       rigged.delete(player.id);
       drawn = { category: catalogue[forced].category, item: forced };
-    } else {
-      drawn = drawItem(rng, tuning.odds, row, catalogue, available);
     }
     if (!drawn) return; // nothing can come from a box: the box stays
     box.active = false;
@@ -471,7 +477,22 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     if (!canTarget(target, item)) return { result: "missed", reason: "untargetable" };
     const now = clock.now();
     const def = catalogue[item];
-    // Ticket 20: God Mode blocks here, with exactly the events of a Shield pop in Stealth.
+    // God Mode: the Admin is immune to every Item. Checked before the Shield so
+    // a real Shield is kept. No Effect, no immunity, no Item Hit.
+    if (god && god.adminId === targetId) {
+      if (god.mode === "stealth") {
+        // Exactly the events of a Shield pop (same fx, same feed line), so nobody can tell.
+        emit({ type: "fx", payload: { kind: "shieldPop", x: target.ball.x, y: target.ball.y, item, targetId }, audience: everyone });
+        emit({ type: "feed", payload: { text: `${target.name}'s Shield ate a ${def.name}` }, audience: everyone });
+      } else {
+        // Loud: an obvious divine block. It says "the Golf Gods", never "the Admin".
+        emit({ type: "fx", payload: { kind: "divineBlock", x: target.ball.x, y: target.ball.y, item, targetId }, audience: everyone });
+        emit({ type: "feed", payload: { text: `👑 The Golf Gods turned away a ${def.name}` }, audience: everyone });
+        emit({ type: "banner", payload: { text: GOLF_GODS_BANNER, detail: "Divine block" }, audience: everyone });
+      }
+      log.push({ kind: "blocked", at: now, holeIndex: state.holeIndex, playerId: attackerId, targetId, item, by: "god" });
+      return { result: "blocked", by: "god" };
+    }
     const shield = effects.find(targetId, "shielded");
     if (shield) {
       effects.end(shield.id, "consumed");
@@ -655,8 +676,12 @@ export function createItemSystem(options: ItemSystemOptions): ItemSystem {
     rig(playerId, item) {
       rigged.set(playerId, item);
     },
+    setGodMode(adminId, enabled, mode) {
+      god = enabled ? { adminId, mode } : null;
+    },
     sendSlot: (playerId) => sendSlot(playerId),
     forget(playerId) {
+      if (god?.adminId === playerId) god = null;
       slots.delete(playerId);
       rigged.delete(playerId);
     },
