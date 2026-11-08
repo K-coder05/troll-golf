@@ -25,7 +25,7 @@ npm install
 npm run dev        # server on :2567 (tsx watch) + client on http://localhost:5173 (Vite)
 ```
 
-Open http://localhost:5173 in two browsers. Create a room in one, enter its 4-letter code in the other, and move the mouse: each sees the other's cursor dot. A link like `http://localhost:5173/?room=ABCD` pre-fills the code.
+Open http://localhost:5173 in two browsers. Create a room in one, enter its 4-letter code in the other. Each Player gets a ball on the Tee: drag back from your ball and release to shoot, hold Tab to see the whole Hole. A link like `http://localhost:5173/?room=ABCD` pre-fills the code.
 
 Other scripts:
 

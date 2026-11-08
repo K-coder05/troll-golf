@@ -5,13 +5,24 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
  * Only public state goes here. Never add an admin flag (ADR 0001).
  */
 
-export const CursorSchema = schema(
+export const PointSchema = schema(
   {
     x: t.number(),
     y: t.number(),
-    active: t.boolean(),
   },
-  "Cursor",
+  "Point",
+);
+
+export const BallSchema = schema(
+  {
+    x: t.number(),
+    y: t.number(),
+    vx: t.number(),
+    vy: t.number(),
+    atRest: t.boolean(),
+    restSpot: PointSchema,
+  },
+  "Ball",
 );
 
 export const PlayerSchema = schema(
@@ -20,7 +31,8 @@ export const PlayerSchema = schema(
     name: t.string(),
     color: t.string(),
     connected: t.boolean(),
-    cursor: CursorSchema,
+    ball: BallSchema,
+    strokes: t.array("number"),
   },
   "Player",
 );

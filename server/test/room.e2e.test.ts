@@ -1,7 +1,7 @@
 /**
  * Smoke test of the real server over WebSockets with the real client SDK.
  * The spec leaves the adapter to playtests; this only proves the wiring:
- * room codes, joining by code, the 8-Player cap and cursor sync.
+ * room codes, joining by code, the 8-Player cap and a shot reaching everyone.
  */
 import { Client, type Room } from "@colyseus/sdk";
 import type { Server } from "@colyseus/core";
@@ -43,10 +43,12 @@ describe("GolfRoom over the network", () => {
   it("creates a room with a 4-letter code and a second client joins it by code", async () => {
     const maya = track(await newClient().create(ROOM_NAME, { name: "Maya", color: "#ff3366" }));
     expect(isValidRoomCode(maya.roomId)).toBe(true);
+    maya.onMessage("hole", () => undefined);
     const mayaFeed: string[] = [];
     maya.onMessage("feed", (m: { text: string }) => mayaFeed.push(m.text));
 
     const ben = track(await newClient().joinById(maya.roomId, { name: "Ben", color: "#3366ff" }));
+    ben.onMessage("hole", () => undefined);
     expect(ben.roomId).toBe(maya.roomId);
 
     await waitFor(() => playersOf(maya).size === 2 && playersOf(ben).size === 2);
@@ -54,11 +56,16 @@ describe("GolfRoom over the network", () => {
     // An everyone-audience event from the simulation reached Maya's connection.
     await waitFor(() => mayaFeed.includes("Ben joined"));
 
-    // Maya moves her cursor; Ben's copy of the state follows.
-    maya.send("cursor", { x: 200, y: 150 });
-    await waitFor(() => playersOf(ben).get(maya.sessionId)?.cursor.active === true);
-    expect(playersOf(ben).get(maya.sessionId)?.cursor).toMatchObject({ x: 200, y: 150 });
-  });
+    // Maya shoots; Ben's copy of the state sees her ball leave the Tee and count a Stroke.
+    const mayaBall = () => playersOf(ben).get(maya.sessionId)?.ball;
+    const startX = mayaBall()!.x;
+    maya.send("shoot", { angle: Math.PI / 2, power: 0.5 });
+    await waitFor(() => mayaBall()!.atRest === false);
+    await waitFor(() => mayaBall()!.atRest === true, 5000);
+    expect(mayaBall()!.x).toBeCloseTo(startX, 0);
+    expect(mayaBall()!.y).not.toBeCloseTo(320, 0);
+    expect(playersOf(ben).get(maya.sessionId)?.strokes[0]).toBe(1);
+  }, 10_000);
 
   it("refuses a join with a wrong code", async () => {
     await expect(newClient().joinById("ZZZZ", { name: "Lost", color: "#000000" })).rejects.toThrow();

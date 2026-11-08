@@ -28,9 +28,9 @@ export class GolfRoom extends Room<{ state: RoomStateSchema }> {
     this.state = new RoomStateSchema();
     syncState(this.state, this.game.getState());
 
-    this.onMessage("cursor", (client, message: unknown) => {
-      const { x, y } = (message ?? {}) as { x?: unknown; y?: unknown };
-      this.game.handleIntent(client.sessionId, { type: "cursor", x: Number(x), y: Number(y) });
+    this.onMessage("shoot", (client, message: unknown) => {
+      const { angle, power } = (message ?? {}) as { angle?: unknown; power?: unknown };
+      this.game.handleIntent(client.sessionId, { type: "shoot", angle: Number(angle), power: Number(power) });
     });
 
     this.setPatchRate(PATCH_MS);

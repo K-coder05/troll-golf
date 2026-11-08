@@ -16,7 +16,7 @@ describe("joining a room", () => {
       ["Ben", "#3366ff", true],
     ]);
 
-    const events = t.drain();
+    const events = t.drain().filter((e) => e.type === "feed");
     expect(events).toEqual([
       { type: "feed", payload: { text: "Maya joined" }, audience: { kind: "everyone" } },
       { type: "feed", payload: { text: "Ben joined" }, audience: { kind: "everyone" } },
@@ -58,36 +58,16 @@ describe("joining a room", () => {
     expect(Object.keys(t.state.players)).toEqual(["maya"]);
     expect(t.drain()).toEqual([{ type: "feed", payload: { text: "Ben left" }, audience: { kind: "everyone" } }]);
   });
-});
 
-describe("cursor dots", () => {
-  it("moves a Player's cursor and Ben sees it in state", () => {
-    const t = new TestGame();
-    t.join("maya", "Maya");
-    t.join("ben", "Ben");
-    expect(t.state.players.maya!.cursor.active).toBe(false);
-
-    t.send("maya", { type: "cursor", x: 120, y: 340 });
-    t.advance(16);
-
-    expect(t.state.players.maya!.cursor).toEqual({ x: 120, y: 340, active: true });
-    expect(t.state.players.ben!.cursor.active).toBe(false);
-  });
-
-  it("keeps the cursor on the Hole", () => {
+  it("sends the Hole's layout only to the Player who joined", () => {
     const t = new TestGame();
     t.join("maya");
-    t.send("maya", { type: "cursor", x: -50, y: 99_999 });
-    expect(t.state.players.maya!.cursor).toMatchObject({ x: 0, y: 640 });
-  });
+    t.drain();
+    t.join("ben");
 
-  it("rejects garbage coordinates and intents from unknown sessions", () => {
-    const t = new TestGame();
-    t.join("maya");
-    t.send("maya", { type: "cursor", x: 10, y: 10 });
-
-    expect(t.send("maya", { type: "cursor", x: Number.NaN, y: 5 })).toEqual({ ok: false, reason: "invalid_payload" });
-    expect(t.send("ghost", { type: "cursor", x: 1, y: 1 })).toEqual({ ok: false, reason: "unknown_player" });
-    expect(t.state.players.maya!.cursor).toMatchObject({ x: 10, y: 10 });
+    const holes = t.drain().filter((e) => e.type === "hole");
+    expect(holes).toHaveLength(1);
+    expect(holes[0]!.audience).toEqual({ kind: "player", playerId: "ben" });
+    expect(holes[0]!.payload).toMatchObject({ holeIndex: 0, hole: { id: "box", tee: { x: 160, y: 320 } } });
   });
 });

@@ -18,12 +18,22 @@ export interface GameSettings {
   itemsEnabled: boolean;
 }
 
-/** Where a Player's pointer is on the course. M0 only; later tickets may drop it. */
-export interface CursorState {
+/** A point on the Hole, px, y down. */
+export interface PointState {
   x: number;
   y: number;
-  /** False until the Player has moved their pointer over the course. */
-  active: boolean;
+}
+
+/** A Player's ball, as the server's physics last left it. Units: px and px/s. */
+export interface BallState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** True once the ball has stayed under the rest threshold long enough; only then can it be shot. */
+  atRest: boolean;
+  /** Where the ball last came to rest (the Tee before the first shot). */
+  restSpot: PointState;
 }
 
 export interface PlayerState {
@@ -32,7 +42,9 @@ export interface PlayerState {
   /** CSS hex colour, e.g. "#ff3366". */
   color: string;
   connected: boolean;
-  cursor: CursorState;
+  ball: BallState;
+  /** Strokes per Hole, indexed by Hole number (0-based). Includes penalties. */
+  strokes: number[];
 }
 
 export interface RoomState {

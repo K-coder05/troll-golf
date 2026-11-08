@@ -10,7 +10,7 @@ import {
   type IntentResult,
 } from "../src/simulation";
 
-const FRAME_MS = 1000 / 60;
+export const FRAME_MS = 1000 / 60;
 
 export interface TestGameOptions {
   course?: CourseData;
@@ -47,6 +47,27 @@ export class TestGame {
 
   join(playerId: string, name = playerId, color = "#ffffff"): IntentResult {
     return this.send(playerId, { type: "join", name, color });
+  }
+
+  shoot(playerId: string, angle: number, power: number): IntentResult {
+    return this.send(playerId, { type: "shoot", angle, power });
+  }
+
+  ball(playerId: string) {
+    const player = this.state.players[playerId];
+    if (!player) throw new Error(`No player ${playerId}`);
+    return player.ball;
+  }
+
+  /** Advance frame by frame until the Player's ball is at rest. Returns the ms it took. */
+  advanceUntilRest(playerId: string, maxMs = 15_000): number {
+    let elapsed = 0;
+    while (!this.ball(playerId).atRest) {
+      if (elapsed >= maxMs) throw new Error(`${playerId}'s ball still moving after ${maxMs} ms`);
+      this.advance(FRAME_MS);
+      elapsed += FRAME_MS;
+    }
+    return elapsed;
   }
 
   /** Advance time in 60 Hz frames, moving the clock and stepping the simulation together. */

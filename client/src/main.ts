@@ -1,8 +1,14 @@
 import type { Room } from "@colyseus/sdk";
-import { isValidRoomCode, normalizeRoomCode, type FeedMessage, type JoinOptions } from "@troll-golf/shared";
+import {
+  isValidRoomCode,
+  normalizeRoomCode,
+  type FeedMessage,
+  type HoleMessage,
+  type JoinOptions,
+} from "@troll-golf/shared";
 import * as Phaser from "phaser";
 import { createRoom, joinRoom } from "./net/connection";
-import { CursorScene, WORLD_HEIGHT, WORLD_WIDTH } from "./scenes/CursorScene";
+import { HoleScene, type HoleSceneData } from "./scenes/HoleScene";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = $<HTMLFormElement>("join-form");
@@ -61,27 +67,39 @@ function startGame(room: Room): void {
   $("room-code").textContent = room.roomId;
   history.replaceState(null, "", `?room=${room.roomId}`);
 
+  // Register handlers right away: the server sends the Hole as soon as we join.
+  let hole: HoleMessage | null = null;
+  room.onMessage("hole", (message: HoleMessage) => (hole = message));
+  room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
+
   const playerCount = $("player-count");
   room.onStateChange((state: { players?: { size: number } }) => {
     const n = state.players?.size ?? 0;
     playerCount.textContent = `${n} player${n === 1 ? "" : "s"}`;
   });
-  room.onMessage("feed", (message: FeedMessage) => console.info(`[feed] ${message.text}`));
   room.onLeave(() => {
     errorText.textContent = "Disconnected from the room.";
     location.reload();
   });
 
+  const strokesText = $("strokes");
+  const sceneData: HoleSceneData = {
+    room,
+    hole: () => hole,
+    onStrokes: (n) => {
+      const text = `${n} stroke${n === 1 ? "" : "s"}`;
+      if (strokesText.textContent !== text) strokesText.textContent = text;
+    },
+  };
+
   new Phaser.Game({
     type: Phaser.AUTO,
     parent: "game",
-    width: WORLD_WIDTH,
-    height: WORLD_HEIGHT,
     backgroundColor: "#12301c",
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
     scene: [],
     callbacks: {
-      postBoot: (game) => game.scene.add("cursor", CursorScene, true, { room }),
+      postBoot: (game) => game.scene.add("hole", HoleScene, true, sceneData),
     },
   });
 }

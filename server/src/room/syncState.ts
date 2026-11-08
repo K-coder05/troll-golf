@@ -30,8 +30,19 @@ export function syncState(target: RoomStateSchema, source: Readonly<RoomState>):
     synced.name = player.name;
     synced.color = player.color;
     synced.connected = player.connected;
-    synced.cursor.x = player.cursor.x;
-    synced.cursor.y = player.cursor.y;
-    synced.cursor.active = player.cursor.active;
+    const ball = synced.ball;
+    ball.x = player.ball.x;
+    ball.y = player.ball.y;
+    ball.vx = player.ball.vx;
+    ball.vy = player.ball.vy;
+    ball.atRest = player.ball.atRest;
+    ball.restSpot.x = player.ball.restSpot.x;
+    ball.restSpot.y = player.ball.restSpot.y;
+
+    // Strokes only change length when Holes do; write in place so only changed entries are sent.
+    while (synced.strokes.length > player.strokes.length) synced.strokes.pop();
+    player.strokes.forEach((n, i) => {
+      if (synced.strokes[i] !== n) synced.strokes[i] = n;
+    });
   }
 }
