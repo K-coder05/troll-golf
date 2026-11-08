@@ -47,7 +47,37 @@ export interface AdminPowerParams {
    * wiped and the Hole timer restarted.
    */
   nuke: { x: number; y: number; aftermath?: NukeAftermath };
+  /**
+   * Move the Cup. `teleport` puts it at a point at once (inside the Hole, not
+   * in a wall). `slide` makes it drift away from any ball that comes within
+   * `triggerDistance` px at `speed` px/s, until the next Hole or until it is
+   * teleported (which cancels the slide).
+   */
+  moveCup:
+    | { mode: "teleport"; x: number; y: number }
+    | { mode: "slide"; triggerDistance?: number; speed?: number };
+  /** Cup Size: set the Cup's capture radius (px), from a pinhole to a crater. Lasts until the next Hole. */
+  cupSize: { radius: number };
+  /**
+   * Lip-Out: the chosen Player's next ball that would drop into the Cup pops
+   * back out instead, once. A pending Lip-Out is server-only and lasts until
+   * it fires or the Hole ends.
+   */
+  lipOut: { targetId: string };
 }
+
+/** Smallest and largest Cup capture radius (px) an Admin can set. Normal Cups are about 12. */
+export const CUP_MIN_RADIUS = 5;
+export const CUP_MAX_RADIUS = 80;
+/** Console presets for Cup Size. */
+export const CUP_PINHOLE_RADIUS = 6;
+export const CUP_CRATER_RADIUS = 48;
+/** A sliding Cup: defaults and limits for its trigger distance and speed. */
+export const CUP_SLIDE_TRIGGER = 140;
+export const CUP_SLIDE_SPEED = 90;
+export const CUP_SLIDE_MIN_TRIGGER = 30;
+export const CUP_SLIDE_MAX_TRIGGER = 500;
+export const CUP_SLIDE_MAX_SPEED = 400;
 
 export type NukeAftermath = "wipe" | "reset";
 

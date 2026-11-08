@@ -1,4 +1,5 @@
 import type { NukeAftermath } from "@troll-golf/shared";
+import { lastPointer } from "../lastPointer";
 import type { AdminPowerPanel } from "./types";
 import type { PanelContext } from "./types";
 
@@ -60,13 +61,3 @@ export const nukePanel: AdminPowerPanel = {
     return root;
   },
 };
-
-const lastPointer = { x: 0, y: 0 };
-window.addEventListener(
-  "contextmenu",
-  (e) => {
-    lastPointer.x = e.clientX;
-    lastPointer.y = e.clientY;
-  },
-  true,
-);

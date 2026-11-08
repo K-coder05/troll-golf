@@ -102,6 +102,15 @@ function useAdminPowers(
   // Nuke: siren, blast and both aftermaths, in both modes. (use() waits 500 ms; the next use waits out the rest.)
   use("nuke", "stealth", { x: 600, y: 300 });
   use("nuke", "loud", { x: 300, y: 300, aftermath: "reset" });
+  // Cup powers: teleport, slide, resize, and a Lip-Out waiting for a ball (none arrive within the 500 ms window).
+  for (const mode of ["stealth", "loud"] as const) {
+    use("moveCup", mode, { mode: "teleport", x: 700, y: 350 });
+    use("moveCup", mode, { mode: "slide", triggerDistance: 100, speed: 50 });
+    use("cupSize", mode, { radius: 30 });
+    use("cupSize", mode, { radius: 8 });
+    use("lipOut", mode, { targetId: "jay" });
+    use("lipOut", mode, { targetId: "maya" });
+  }
 }
 
 /** Every object key anywhere in a JSON-able value. */

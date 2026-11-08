@@ -18,7 +18,7 @@ import {
   type RoomState,
   type Vec2,
 } from "@troll-golf/shared";
-import { createAdminPowers, type AdminBallControl, type AdminLogEntry, type AdminNukeControl } from "./admin";
+import { createAdminPowers, type AdminBallControl, type AdminCupControl, type AdminLogEntry, type AdminNukeControl } from "./admin";
 import type { Clock } from "./clock";
 import { everyone, toPlayer, type GameEvent } from "./events";
 import type { Intent, IntentResult } from "./intents";
@@ -186,6 +186,12 @@ export function createGame(options: CreateGameOptions): Game {
   const slowSteps = new Map<string, number>();
   // Balls inside the Cup's capture radius that already lipped out, so each pass lips out once.
   const lippedOut = new Set<string>();
+  // Players whose next would-be hole-out lips out instead (Lip-Out). Server-only, never synced.
+  const pendingLipOut = new Set<string>();
+  // Balls just popped out by a Lip-Out: they can't drop in until they have left the capture radius.
+  const poppedOut = new Set<string>();
+  // A sliding Cup (Move the Cup): drifts away from balls within `trigger` px at `speed` px/s. Server-only.
+  let cupSlide: { trigger: number; speed: number } | null = null;
   // Balls in the Cup's no-collision zone, where other balls pass through them.
   const cupGuarded = new Set<string>();
   // Players who left mid-game for good. They stay in state (their scores
@@ -205,6 +211,7 @@ export function createGame(options: CreateGameOptions): Game {
     updateStandings: () => updateStandings(),
     balls: ballControl(),
     nukes: nukeControl(),
+    cup: cupControl(),
   });
 
   // ---- Ball Grab: the Admin holds one ball at a time ----
@@ -332,6 +339,67 @@ export function createGame(options: CreateGameOptions): Game {
    * It is cancelled (fx `nukeAbort`) if the Hole ends first, and dropped by a new Hole.
    */
   let nuke: { x: number; y: number; aftermath: NukeAftermath; blastAt: number; doneAt: number; blasted: boolean } | null = null;
+
+  // ---- Cup powers: Move the Cup, Cup Size, Lip-Out ----
+
+  function cupControl(): AdminCupControl {
+    return {
+      teleport(x, y) {
+        if (!legalCupSpot({ x, y })) return { ok: false, reason: "invalid_payload" };
+        cupSlide = null;
+        state.cup.x = x;
+        state.cup.y = y;
+        lippedOut.clear();
+        poppedOut.clear();
+        return { ok: true };
+      },
+      slide(trigger, speed) {
+        cupSlide = { trigger, speed };
+      },
+      resize(radius) {
+        state.cup.radius = radius;
+      },
+      armLipOut(playerId) {
+        const player = state.players[playerId];
+        if (!player) return { ok: false, reason: "unknown_target" };
+        if (player.holedOut || player.spectating) return { ok: false, reason: "no_ball_in_play" };
+        pendingLipOut.add(playerId);
+        return { ok: true, name: player.name };
+      },
+    };
+  }
+
+  /** Whether the Cup may be centred here: inside the Hole and not inside a wall. */
+  function legalCupSpot(p: Vec2): boolean {
+    const { width, height, walls } = currentHole();
+    return p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height && !walls.some((w) => pointInPolygon(p, w));
+  }
+
+  /** A sliding Cup backs away from the nearest ball inside its trigger distance, steering round walls and edges. */
+  function slideCup(dtMs: number): void {
+    if (!cupSlide) return;
+    const cup = state.cup;
+    let nearest: PlayerState | null = null;
+    let nearestDistance = cupSlide.trigger;
+    for (const player of Object.values(state.players)) {
+      if (!physics.hasBall(player.id)) continue;
+      const d = Math.hypot(player.ball.x - cup.x, player.ball.y - cup.y);
+      if (d <= nearestDistance) {
+        nearest = player;
+        nearestDistance = d;
+      }
+    }
+    if (!nearest) return;
+    const away = nearestDistance < 1e-6 ? options.rng.next() * Math.PI * 2 : Math.atan2(cup.y - nearest.ball.y, cup.x - nearest.ball.x);
+    const step = (cupSlide.speed * dtMs) / 1000;
+    for (const turn of [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]) {
+      const next = { x: cup.x + Math.cos(away + turn) * step, y: cup.y + Math.sin(away + turn) * step };
+      if (!legalCupSpot(next)) continue;
+      cup.x = next.x;
+      cup.y = next.y;
+      return;
+    }
+  }
 
   function nukeControl(): AdminNukeControl {
     return {
@@ -497,6 +565,7 @@ export function createGame(options: CreateGameOptions): Game {
     portalLocked.delete(id);
     lippedOut.delete(id);
     cupGuarded.delete(id);
+    poppedOut.delete(id);
   }
 
   /**
@@ -559,6 +628,9 @@ export function createGame(options: CreateGameOptions): Game {
     surfaces = courseSurfaces(hole);
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
+    cupSlide = null;
+    pendingLipOut.clear();
+    poppedOut.clear();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
     presentThisHole.clear();
@@ -673,6 +745,9 @@ export function createGame(options: CreateGameOptions): Game {
     surfaces = courseSurfaces(hole);
     physics = newPhysicsWorld();
     state.cup = { ...hole.cup };
+    cupSlide = null;
+    pendingLipOut.clear();
+    poppedOut.clear();
     state.obstacleTimeMs = 0;
     placeEveryoneOnTee();
     for (const player of Object.values(state.players)) player.strokes = course.holes.map(() => 0);
@@ -904,9 +979,15 @@ export function createGame(options: CreateGameOptions): Game {
     const cup = state.cup;
     if (Math.hypot(ball.x - cup.x, ball.y - cup.y) > cup.radius) {
       lippedOut.delete(player.id);
+      poppedOut.delete(player.id);
       return false;
     }
+    if (poppedOut.has(player.id)) return false;
     if (Math.hypot(ball.vx, ball.vy) < CUP_CAPTURE_SPEED) {
+      if (pendingLipOut.delete(player.id)) {
+        popOut(player);
+        return false;
+      }
       holeOut(player);
       return true;
     }
@@ -915,6 +996,34 @@ export function createGame(options: CreateGameOptions): Game {
       emit({ type: "fx", payload: { kind: "lipOut", x: cup.x, y: cup.y }, audience: everyone });
     }
     return false;
+  }
+
+  /**
+   * A forced Lip-Out: the ball that would have dropped in is kicked on and
+   * rolls out of the Cup, with the same `lipOut` fx a natural lip-out sends.
+   */
+  function popOut(player: PlayerState): void {
+    const ball = player.ball;
+    const cup = state.cup;
+    // Like a natural lip-out the ball keeps going the way it was rolling; a ball with no heading is pushed out of the centre.
+    const dx = ball.x - cup.x;
+    const dy = ball.y - cup.y;
+    const angle =
+      Math.hypot(ball.vx, ball.vy) > 1
+        ? Math.atan2(ball.vy, ball.vx)
+        : Math.hypot(dx, dy) > 1e-6
+          ? Math.atan2(dy, dx)
+          : options.rng.next() * Math.PI * 2;
+    const speed = CUP_CAPTURE_SPEED * 1.4;
+    const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+    physics.setVelocity(player.id, velocity);
+    ball.vx = velocity.x;
+    ball.vy = velocity.y;
+    ball.atRest = false;
+    slowSteps.set(player.id, 0);
+    poppedOut.add(player.id);
+    lippedOut.add(player.id);
+    emit({ type: "fx", payload: { kind: "lipOut", x: cup.x, y: cup.y }, audience: everyone });
   }
 
   /** The ball drops in: it leaves the physics world and the Player spectates. */
@@ -939,6 +1048,7 @@ export function createGame(options: CreateGameOptions): Game {
 
   /** One fixed 60 Hz step: move every ball, then apply the Cup, hazards and the rest rule. */
   function physicsStep(): void {
+    slideCup(PHYSICS_STEP_MS);
     guardCup();
     physics.step();
     elapsedMs += PHYSICS_STEP_MS;

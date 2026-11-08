@@ -71,6 +71,8 @@ export type IntentRejection =
   /** Ball Grab move or release with no ball held. */
   | "not_holding"
   /** Nuke while another one is still pending, or with an impact point outside the Hole. */
-  | "nuke_pending";
+  | "nuke_pending"
+  /** Lip-Out on a Player whose ball can't drop into the Cup right now (Holed Out). */
+  | "no_ball_in_play";
 
 export type IntentResult = { ok: true } | { ok: false; reason: IntentRejection };

@@ -57,6 +57,18 @@ export interface AdminNukeControl {
   launch(x: number, y: number, aftermath: NukeAftermath): { ok: true } | { ok: false; reason: IntentRejection };
 }
 
+/** The Admin's hold on the Cup: where it is, how big, and pending Lip-Outs. */
+export interface AdminCupControl {
+  /** Put the Cup at a point (cancels any slide). `invalid_payload` if it isn't inside the Hole or is inside a wall. */
+  teleport(x: number, y: number): { ok: true } | { ok: false; reason: IntentRejection };
+  /** Make the Cup drift away from balls that come within `triggerDistance` px, at `speed` px/s, for the rest of the Hole. */
+  slide(triggerDistance: number, speed: number): void;
+  /** Set the capture radius, px. */
+  resize(radius: number): void;
+  /** The Player's next would-be hole-out lips out instead, once. Server-only. */
+  armLipOut(playerId: string): { ok: true; name: string } | { ok: false; reason: IntentRejection };
+}
+
 /**
  * What a handler may touch. Deliberately small; later Admin Powers add the
  * hooks they need (physics, surfaces, the Cup, Items...) in game.ts, where the
@@ -75,6 +87,8 @@ export interface AdminPowerContext {
   readonly balls: AdminBallControl;
   /** Launch a Nuke. */
   readonly nukes: AdminNukeControl;
+  /** Move, resize and rig the Cup. */
+  readonly cup: AdminCupControl;
 }
 
 export type AdminPowerOutcome =
@@ -163,6 +177,7 @@ export interface AdminPowersOptions {
   updateStandings(): void;
   balls: AdminBallControl;
   nukes: AdminNukeControl;
+  cup: AdminCupControl;
 }
 
 export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
@@ -216,6 +231,7 @@ export function createAdminPowers(options: AdminPowersOptions): AdminPowers {
         updateStandings: options.updateStandings,
         balls: options.balls,
         nukes: options.nukes,
+        cup: options.cup,
       };
       const outcome = handler.use(ctx, params as never, mode);
       if (!outcome.ok) return reject(handler.id, outcome.reason);
