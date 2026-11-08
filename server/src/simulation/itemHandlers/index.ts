@@ -1,10 +1,13 @@
 import type { ItemHandlerRegistry } from "../items";
 import { bananaMine } from "./bananaMine";
+import { cupMagnet } from "./cupMagnet";
 import { freezeRay } from "./freezeRay";
+import { ghostBall } from "./ghostBall";
 import { golfGun } from "./golfGun";
 import { inkSplat } from "./inkSplat";
 import { mulligan } from "./mulligan";
 import { shield } from "./shield";
+import { swap } from "./swap";
 
 /**
  * Every Item's server-side use handler, by Item id. Adding an Item: its data
@@ -16,9 +19,12 @@ import { shield } from "./shield";
  */
 export const ITEM_HANDLERS: ItemHandlerRegistry = {
   bananaMine,
+  cupMagnet,
   freezeRay,
+  ghostBall,
   golfGun,
   inkSplat,
   mulligan,
   shield,
+  swap,
 };

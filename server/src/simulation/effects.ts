@@ -78,6 +78,15 @@ export interface EffectBallControl {
    * call it again once it has one.
    */
   pin(playerId: string, pinned: boolean): void;
+  /** Let the ball pass through walls and obstacles (the Hole's edge still holds it), or collide again. */
+  setGhost(playerId: string, ghost: boolean): void;
+  /** Pull the ball toward the Cup: add `accel` px/s^2 for one physics step to its velocity. No-op without a body. */
+  pullToCup(playerId: string, accel: number): void;
+  /**
+   * The ball comes out of a wall it was inside (a Ghost Ball that stopped in
+   * one): it moves to the nearest legal, dry spot, which becomes its Rest Spot.
+   */
+  settle(playerId: string): void;
 }
 
 export interface EffectHookContext {
@@ -87,6 +96,8 @@ export interface EffectHookContext {
   readonly balls: EffectBallControl;
   /** Move the Effect's end time (synced to clients too). At or before now, it ends on the next step. */
   setEndsAt(effect: ActiveEffect, endsAt: number): void;
+  /** End this Effect now. */
+  end(effect: ActiveEffect, why: EffectEndReason): void;
 }
 
 export interface EffectDefinition<K extends EffectKind = EffectKind> {
@@ -102,6 +113,10 @@ export interface EffectDefinition<K extends EffectKind = EffectKind> {
   /** Every physics step while the Hole is played. */
   onStep?(ctx: EffectHookContext, effect: ActiveEffect): void;
   onEnd?(ctx: EffectHookContext, effect: ActiveEffect, why: EffectEndReason): void;
+  /** The target took a shot (Cup Magnet and Ghost Ball start working on it). */
+  onShot?(ctx: EffectHookContext, effect: ActiveEffect): void;
+  /** The target's ball came to rest (or sank, or dropped into the Cup). */
+  onRest?(ctx: EffectHookContext, effect: ActiveEffect): void;
   /** One mash click from the target (Freeze: break out sooner). */
   onMash?(ctx: EffectHookContext, effect: ActiveEffect): void;
 }
@@ -183,6 +198,10 @@ export interface EffectSystem {
   shotBlocker(playerId: string): IntentRejection | null;
   /** A mash click: passed to every active Effect on the Player that reacts to it. False if none does. */
   mash(playerId: string): boolean;
+  /** The Player just took a shot: onShot hooks. */
+  shot(playerId: string): void;
+  /** The Player's ball came to rest, sank or was holed: onRest hooks. */
+  rested(playerId: string): void;
   /** Each physics step while playing: onStep hooks. */
   step(): void;
   /** End every Effect whose time is up. Call while playing. */
@@ -210,6 +229,7 @@ export function createEffectSystem(options: EffectSystemOptions): EffectSystem {
       const shown = state.players[effect.targetId]?.effects.find((e) => e.id === effect.id);
       if (shown) shown.endsAt = endsAt;
     },
+    end: (effect, why) => end(effect.id, why),
   };
 
   const def = (kind: EffectKind) => registry[kind] as EffectDefinition;
@@ -302,6 +322,12 @@ export function createEffectSystem(options: EffectSystemOptions): EffectSystem {
         handled = true;
       }
       return handled;
+    },
+    shot(playerId) {
+      for (const effect of onPlayer(playerId)) def(effect.kind).onShot?.(hookContext, effect);
+    },
+    rested(playerId) {
+      for (const effect of onPlayer(playerId)) def(effect.kind).onRest?.(hookContext, effect);
     },
     step() {
       for (const effect of [...active]) def(effect.kind).onStep?.(hookContext, effect);

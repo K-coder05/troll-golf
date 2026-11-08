@@ -94,6 +94,8 @@ export class PhysicsWorld {
   private readonly wallBodies: Body[] = [];
   /** Last position of each ball that was legal (inside the Hole, outside every wall). */
   private readonly safeSpots = new Map<string, Vec2>();
+  /** Balls that pass through walls and obstacles (Ghost Ball). Only the Hole's edge still holds them. */
+  private readonly ghosts = new Set<string>();
   private stepCount = 0;
 
   constructor(options: PhysicsWorldOptions) {
@@ -167,6 +169,7 @@ export class PhysicsWorld {
     this.world.destroyBody(body);
     this.balls.delete(id);
     this.safeSpots.delete(id);
+    this.ghosts.delete(id);
   }
 
   hasBall(id: string): boolean {
@@ -237,7 +240,14 @@ export class PhysicsWorld {
     return this.balls.get(id)?.isStatic() ?? false;
   }
 
+  /** Whether the ball currently passes through walls and obstacles (it has `walls: false`). */
+  isGhost(id: string): boolean {
+    return this.ghosts.has(id);
+  }
+
   setCollisions(id: string, collisions: BallCollisions): void {
+    if (collisions.walls) this.ghosts.delete(id);
+    else this.ghosts.add(id);
     for (let f: Fixture | null = this.body(id).getFixtureList(); f; f = f.getNext()) {
       f.setFilterData({ groupIndex: 0, categoryBits: CATEGORY.ball, maskBits: maskFor(collisions) });
     }
@@ -265,7 +275,10 @@ export class PhysicsWorld {
     const p = body.getPosition();
     const at = { x: p.x * PIXELS_PER_METRE, y: p.y * PIXELS_PER_METRE };
     const { width, height, walls } = this.hole;
-    const legal = at.x > 0 && at.y > 0 && at.x < width && at.y < height && !walls.some((w) => pointInPolygon(at, w));
+    // A ghost may be inside a wall (the game moves it out when it comes to rest), but never outside the Hole.
+    const ghost = this.ghosts.has(id);
+    const legal =
+      at.x > 0 && at.y > 0 && at.x < width && at.y < height && (ghost || !walls.some((w) => pointInPolygon(at, w)));
     if (legal) {
       this.safeSpots.set(id, at);
       return;

@@ -72,6 +72,14 @@ export interface ItemBallControl {
   push(playerId: string, delta: Vec2, byName: string): void;
   /** The Hole's width and height (a placed trap must lie inside it). */
   holeSize(): { width: number; height: number };
+  /** Whether the Player's ball is in play and free to be moved by Swap (has a body; not Frozen, held by Ball Grab, Holed Out or waiting). */
+  canSwap(playerId: string): boolean;
+  /**
+   * Trade the two balls' positions. Each ball keeps its own velocity and
+   * resting state; a resting ball's new place becomes its Rest Spot. False
+   * (nothing moves) unless both can be swapped.
+   */
+  swap(aId: string, bId: string): boolean;
   /** Where the Cup is now (a Holed-Out Golf Gun shooter fires from it). */
   cupPosition(): Vec2;
 }

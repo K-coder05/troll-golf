@@ -148,11 +148,13 @@ export const ITEM_CATALOGUE: ItemCatalogue = {
     icon: "🧲",
     category: "self",
     targeting: "self",
-    durationMs: 0,
+    // How long it waits armed for a shot (effectively until the Hole ends).
+    durationMs: 3_600_000,
     disabling: false,
     counters: [],
     weight: 2,
-    params: {},
+    // pull: acceleration toward the Cup while the shot rolls, px/s^2.
+    params: { pull: 120 },
   },
   ghostBall: {
     id: "ghostBall",
@@ -160,7 +162,8 @@ export const ITEM_CATALOGUE: ItemCatalogue = {
     icon: "👻",
     category: "self",
     targeting: "self",
-    durationMs: 0,
+    // How long it waits armed for a shot (effectively until the Hole ends).
+    durationMs: 3_600_000,
     disabling: false,
     counters: [],
     weight: 2,

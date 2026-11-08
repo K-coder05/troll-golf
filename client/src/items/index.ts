@@ -1,11 +1,14 @@
 import type { FxMessage, ItemId } from "@troll-golf/shared";
 import type * as Phaser from "phaser";
 import { bananaMineRenderer } from "./bananaMine";
+import { cupMagnetRenderer } from "./cupMagnet";
 import { freezeRayRenderer } from "./freezeRay";
+import { ghostBallRenderer } from "./ghostBall";
 import { golfGunRenderer } from "./golfGun";
 import { inkSplatRenderer } from "./inkSplat";
 import { mulliganRenderer } from "./mulligan";
 import { shieldRenderer } from "./shield";
+import { swapRenderer } from "./swap";
 
 /**
  * How the client shows an Item being used: one renderer per Item, played for
@@ -21,9 +24,12 @@ export interface ItemRenderer {
 /** Every Item's client renderer, by Item id. Items without one show nothing extra. */
 export const ITEM_RENDERERS: { readonly [K in ItemId]?: ItemRenderer } = {
   bananaMine: bananaMineRenderer,
+  cupMagnet: cupMagnetRenderer,
   freezeRay: freezeRayRenderer,
+  ghostBall: ghostBallRenderer,
   golfGun: golfGunRenderer,
   inkSplat: inkSplatRenderer,
   mulligan: mulliganRenderer,
   shield: shieldRenderer,
+  swap: swapRenderer,
 };

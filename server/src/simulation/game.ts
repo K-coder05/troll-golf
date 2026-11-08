@@ -274,6 +274,33 @@ export function createGame(options: CreateGameOptions): Game {
           ball.vy = 0;
         }
       },
+      setGhost(playerId, ghost) {
+        if (!physics.hasBall(playerId) || physics.isGhost(playerId) === ghost) return;
+        physics.setCollisions(playerId, { walls: !ghost, balls: !cupGuarded.has(playerId) });
+      },
+      pullToCup(playerId, accel) {
+        const ball = state.players[playerId]?.ball;
+        if (!ball || !physics.hasBall(playerId) || ball.atRest || physics.isPinned(playerId)) return;
+        const dx = state.cup.x - ball.x;
+        const dy = state.cup.y - ball.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1) return;
+        const dv = (accel * PHYSICS_STEP_MS) / 1000;
+        physics.addVelocity(playerId, { x: (dx / dist) * dv, y: (dy / dist) * dv });
+      },
+      settle(playerId) {
+        const ball = state.players[playerId]?.ball;
+        if (!ball || !physics.hasBall(playerId) || held?.id === playerId) return;
+        const spot = legalRestSpot({ x: ball.x, y: ball.y });
+        if (spot.x !== ball.x || spot.y !== ball.y) {
+          physics.teleport(playerId, spot);
+          ball.x = spot.x;
+          ball.y = spot.y;
+          ball.vx = 0;
+          ball.vy = 0;
+        }
+        if (ball.atRest) ball.restSpot = { ...spot };
+      },
     },
   });
   // Item Boxes, the draw, held Items and their use. Held Items are server-only (private to their holder).
@@ -310,6 +337,32 @@ export function createGame(options: CreateGameOptions): Game {
         snipers.set(playerId, { name: byName, until: clock.now() + SNIPE_CREDIT_MS });
       },
       cupPosition: () => ({ x: state.cup.x, y: state.cup.y }),
+      canSwap: (playerId) => {
+        const player = state.players[playerId];
+        return !!player && state.phase === "playing" && hasBallInPlay(player) && physics.hasBall(playerId) && !physics.isPinned(playerId) && held?.id !== playerId;
+      },
+      swap(aId, bId) {
+        const control = itemBallControl();
+        if (aId === bId || !control.canSwap(aId) || !control.canSwap(bId)) return false;
+        const a = state.players[aId]!.ball;
+        const b = state.players[bId]!.ball;
+        const posA = { x: a.x, y: a.y };
+        const posB = { x: b.x, y: b.y };
+        const move = (id: string, ball: PlayerState["ball"], to: Vec2) => {
+          // A ghost caught inside a wall mid-flight must not drop its partner into it.
+          const dest = legalBallSpot(to) ? to : legalRestSpot(to);
+          physics.teleport(id, dest, { x: ball.vx, y: ball.vy });
+          ball.x = dest.x;
+          ball.y = dest.y;
+          // Each ball keeps its own velocity; a resting ball's new place is its Rest Spot, a rolling ball keeps the one it left from.
+          if (ball.atRest) ball.restSpot = { ...dest };
+          insidePads.delete(id);
+          portalLocked.delete(id);
+        };
+        move(aId, a, posB);
+        move(bId, b, posA);
+        return true;
+      },
       holeSize: () => ({ width: currentHole().width, height: currentHole().height }),
       placeAtRest(playerId, at) {
         const player = state.players[playerId]!;
@@ -595,12 +648,28 @@ export function createGame(options: CreateGameOptions): Game {
    * spot around it, else the Tee.
    */
   function dryReturnSpot(from: Vec2): Vec2 {
-    const dry = (p: Vec2) =>
+    if (!isHazard(surfaces.at(from))) return { ...from };
+    return nearestDrySpot(from);
+  }
+
+  /** A ball centre that is legal (inside the Hole, outside every wall) and has no Water or Void within a ball radius. */
+  function isDryLegal(p: Vec2): boolean {
+    return (
       legalBallSpot(p) &&
       [p, { x: p.x + BALL_RADIUS, y: p.y }, { x: p.x - BALL_RADIUS, y: p.y }, { x: p.x, y: p.y + BALL_RADIUS }, { x: p.x, y: p.y - BALL_RADIUS }].every(
         (q) => !isHazard(surfaces.at(q)),
-      );
-    if (!isHazard(surfaces.at(from))) return { ...from };
+      )
+    );
+  }
+
+  /** Where a ball that came to rest may stay: here if it is legal (not inside a wall or off the Hole), else the nearest dry legal spot. */
+  function legalRestSpot(from: Vec2): Vec2 {
+    if (legalBallSpot(from) && !isHazard(surfaces.at(from))) return { ...from };
+    return nearestDrySpot(from);
+  }
+
+  function nearestDrySpot(from: Vec2): Vec2 {
+    const dry = isDryLegal;
     const tee = currentHole().tee;
     for (const centre of [from, tee]) {
       for (let r = BALL_RADIUS * 2; r <= 1200; r += BALL_RADIUS * 2) {
@@ -799,7 +868,7 @@ export function createGame(options: CreateGameOptions): Game {
       if (inside === cupGuarded.has(player.id)) continue;
       if (inside) cupGuarded.add(player.id);
       else cupGuarded.delete(player.id);
-      physics.setCollisions(player.id, { walls: true, balls: !inside });
+      physics.setCollisions(player.id, { walls: !physics.isGhost(player.id), balls: !inside });
     }
   }
 
@@ -1158,6 +1227,8 @@ export function createGame(options: CreateGameOptions): Game {
     player.ball.atRest = false;
     slowSteps.set(playerId, 0);
     player.strokes[state.holeIndex] = (player.strokes[state.holeIndex] ?? 0) + 1;
+    // Cup Magnet and Ghost Ball armed earlier start working on this shot.
+    effects.shot(playerId);
     return { ok: true };
   }
 
@@ -1192,6 +1263,7 @@ export function createGame(options: CreateGameOptions): Game {
     slowSteps.set(player.id, 0);
     insidePads.delete(player.id);
     portalLocked.delete(player.id);
+    effects.rested(player.id);
     const sniper = snipers.get(player.id);
     snipers.delete(player.id);
     const sniped = sniper !== undefined && clock.now() <= sniper.until;
@@ -1312,6 +1384,7 @@ export function createGame(options: CreateGameOptions): Game {
     player.ball.vx = 0;
     player.ball.vy = 0;
     player.ball.atRest = true;
+    effects.rested(player.id);
     emit({ type: "fx", payload: { kind: "holeOut", x: cup.x, y: cup.y }, audience: everyone });
     const strokes = player.strokes[state.holeIndex] ?? 0;
     emit({
@@ -1381,6 +1454,8 @@ export function createGame(options: CreateGameOptions): Game {
         ball.vy = 0;
         ball.atRest = true;
         ball.restSpot = { x: ball.x, y: ball.y };
+        // Ghost Ball / Cup Magnet end here (a ghost resting inside a wall is moved out first).
+        effects.rested(id);
       }
     }
   }

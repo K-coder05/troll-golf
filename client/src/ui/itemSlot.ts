@@ -26,6 +26,9 @@ const DENIED: Record<string, string> = {
   untargetable: "Can't hit them right now",
   bad_placement: "Too close to the Cup",
   unknown_target: "Can't hit them",
+  already_active: "Already armed",
+  frozen: "Not while frozen",
+  not_in_play: "Not right now",
 };
 
 /** Holding Space this long with an opponent Item opens the target picker instead of a tap. */

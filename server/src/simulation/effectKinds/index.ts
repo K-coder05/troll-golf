@@ -1,5 +1,7 @@
 import type { EffectRegistry } from "../effects";
+import { cupMagnet } from "./cupMagnet";
 import { frozen } from "./frozen";
+import { ghostBall } from "./ghostBall";
 import { inked } from "./inked";
 import { shielded } from "./shielded";
 
@@ -10,7 +12,9 @@ import { shielded } from "./shielded";
  * on the client (client/src/items/effects.ts).
  */
 export const EFFECT_DEFINITIONS: EffectRegistry = {
+  cupMagnet,
   frozen,
+  ghostBall,
   inked,
   shielded,
 };

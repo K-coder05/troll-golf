@@ -83,6 +83,8 @@ interface BallSprite {
   effects: Phaser.GameObjects.Text;
   /** The ice block around a Frozen ball. */
   ice: Phaser.GameObjects.Rectangle;
+  /** The Cup Magnet ring (armed or pulling). */
+  magnet: Phaser.GameObjects.Arc;
   /** The Shield bubble. */
   bubble: Phaser.GameObjects.Arc;
 }
@@ -791,6 +793,7 @@ export class HoleScene extends Phaser.Scene {
             .rectangle(0, 0, BALL_RADIUS * 3, BALL_RADIUS * 3, 0xbfe9ff, 0.55)
             .setStrokeStyle(2, 0xffffff, 0.9)
             .setDepth(5.5),
+          magnet: this.add.circle(0, 0, BALL_RADIUS + 8).setStrokeStyle(2, 0xff5a5a, 0.9).setDepth(5.4),
           bubble: this.add.circle(0, 0, BALL_RADIUS + 5, 0xb48cff, 0.15).setStrokeStyle(2, 0xd9c4ff, 0.9).setDepth(5.5),
         };
         this.balls.set(id, sprite);
@@ -808,13 +811,19 @@ export class HoleScene extends Phaser.Scene {
       sprite.label.setVisible(visible);
       // A disconnected Player's ball stays put, greyed out, with an "offline" badge, until they reconnect.
       const offline = !player.connected;
-      sprite.circle.setAlpha(offline ? 0.35 : 1);
+      // A Ghost Ball (armed or flying) is translucent.
+      const ghost = effectKinds(player).includes("ghostBall");
+      sprite.circle.setAlpha(offline ? 0.35 : ghost ? 0.5 : 1);
       sprite.label.setAlpha(offline ? 0.6 : 1);
       sprite.badge.setVisible(visible && offline).setPosition(sprite.circle.x, sprite.circle.y + BALL_RADIUS + 2);
       // Effects: an ice block, a Shield bubble, and a small badge per Effect.
       const kinds = effectKinds(player);
       const { x, y } = sprite.circle;
       sprite.ice.setVisible(visible && kinds.includes("frozen")).setPosition(x, y).setRotation(0.12);
+      sprite.magnet
+        .setVisible(visible && kinds.includes("cupMagnet"))
+        .setPosition(x, y)
+        .setScale(1 + Math.sin(now / 150) * 0.12);
       sprite.bubble
         .setVisible(visible && kinds.includes("shielded"))
         .setPosition(x, y)
@@ -832,6 +841,7 @@ export class HoleScene extends Phaser.Scene {
       sprite.badge.destroy();
       sprite.effects.destroy();
       sprite.ice.destroy();
+      sprite.magnet.destroy();
       sprite.bubble.destroy();
       this.balls.delete(id);
     }

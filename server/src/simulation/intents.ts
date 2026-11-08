@@ -105,6 +105,8 @@ export type IntentRejection =
   | "untargetable"
   /** Banana Mine placed (by a Holed-Out Player) too close to the Cup, or off the Hole. The Item is kept. */
   | "bad_placement"
+  /** A self Item (Cup Magnet, Ghost Ball) used while one of the same kind is already armed. The Item is kept. */
+  | "already_active"
   /** A mash with no Effect that reacts to it. */
   | "no_effect";
 
