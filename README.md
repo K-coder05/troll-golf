@@ -13,6 +13,7 @@ npm workspaces, all TypeScript:
 | --- | --- |
 | `shared/` | State, course data and message types used by both sides, and room-code helpers. Consumed as TypeScript source. |
 | `server/` | `src/simulation/`: the Game simulation (framework-free, owns every rule). `src/room/`: the thin Colyseus adapter. `src/app.ts`: HTTP + WebSocket server that also serves the built client. |
+| `tools/` | Dev tooling. `npm run convert-course` turns Tiled maps into course data; see `docs/course-authoring.md`. |
 | `client/` | Phaser + Vite browser client. It renders synced state and sends intents. |
 
 Tests live in `server/test/` (simulation scenarios through `test/harness.ts`, plus a WebSocket smoke test) and next to shared code.

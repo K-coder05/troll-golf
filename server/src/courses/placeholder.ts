@@ -7,11 +7,18 @@ export const placeholderCourse: CourseData = {
   holes: [
     {
       id: "box",
+      name: "Box",
       par: 2,
       width: 960,
       height: 640,
       tee: { x: 160, y: 320 },
       cup: { x: 800, y: 320, radius: 12 },
+      surfaces: [],
+      boostPads: [],
+      teleporters: [],
+      itemBoxes: [],
+      windmills: [],
+      slidingWalls: [],
       walls: [
         [
           { x: 0, y: 0 },
