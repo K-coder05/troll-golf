@@ -187,7 +187,8 @@ function enterRoom(room: Room): void {
   room.onDrop(() => (connectionBanner.hidden = false));
   room.onReconnect(() => {
     connectionBanner.hidden = true;
-    rememberSeat(room);
+    // The SDK fires this before it stores the new reconnection token: save the seat once it has.
+    queueMicrotask(() => rememberSeat(room));
   });
   room.onLeave(() => {
     // Left for good (or reconnecting failed): back to the join screen with the code still in the address bar.
