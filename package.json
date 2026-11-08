@@ -1,0 +1,30 @@
+{
+  "name": "troll-golf",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @troll-golf/server & npm run dev -w @troll-golf/client & wait",
+    "build": "npm run build -w @troll-golf/shared && npm run build -w @troll-golf/client && npm run build -w @troll-golf/server",
+    "start": "npm start -w @troll-golf/server",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}

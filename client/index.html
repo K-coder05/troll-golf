@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Troll Golf</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #12301c;
+        --panel: #1d4a2b;
+        --text: #f2f7ef;
+        --muted: #a9c9ae;
+        --accent: #ffd24d;
+        --error: #ff8080;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+      #game { position: fixed; inset: 0; }
+      #lobby {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+      }
+      #lobby form {
+        width: min(360px, 100%); display: grid; gap: 12px; padding: 24px;
+        background: var(--panel); border-radius: 12px;
+      }
+      h1 { margin: 0 0 4px; font-size: 28px; }
+      label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+      input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d6b49; background: #0e2416; color: var(--text); }
+      input[type="color"] { padding: 2px; height: 40px; }
+      #code { text-transform: uppercase; letter-spacing: 0.3em; }
+      .row { display: flex; gap: 8px; }
+      button { flex: 1; font: inherit; font-weight: 600; padding: 10px; border: 0; border-radius: 6px; cursor: pointer; background: var(--accent); color: #2b2100; }
+      button.secondary { background: #3d6b49; color: var(--text); }
+      button:disabled { opacity: 0.6; cursor: wait; }
+      #error { min-height: 1.2em; margin: 0; color: var(--error); font-size: 14px; }
+      #hud { position: fixed; top: 12px; left: 12px; padding: 6px 12px; border-radius: 6px; background: rgba(0,0,0,0.45); font-size: 14px; }
+      #hud strong { color: var(--accent); letter-spacing: 0.2em; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="lobby">
+      <form id="join-form" autocomplete="off">
+        <h1>Troll Golf</h1>
+        <label>Nickname <input id="name" maxlength="16" required placeholder="Maya" /></label>
+        <label>Ball colour <input id="color" type="color" value="#ff3366" /></label>
+        <button id="create" type="button">Create room</button>
+        <label>Room code <input id="code" maxlength="4" placeholder="GOLF" /></label>
+        <div class="row"><button id="join" type="submit" class="secondary">Join room</button></div>
+        <p id="error" role="alert"></p>
+      </form>
+    </div>
+    <div id="hud" hidden>Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
