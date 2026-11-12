@@ -18,7 +18,7 @@ See `.scratch/troll-golf-v1/spec.md` (Architecture, Modules, Testing Decisions).
 - [x] Events drained from the simulation carry an audience (everyone, one Player, Admin only), and the adapter routes them by audience.
 - [x] Creating a room returns a 4-letter code; joining with a wrong code fails; a 9th join is refused.
 - [x] Two browsers on the deployed URL see each other's cursor dots.
-- [ ] Deployed to one always-on Fly.io machine that also serves the client files.
+- [x] Deployed to one always-on Fly.io machine that also serves the client files.
 
 ## Comments
 
@@ -42,3 +42,5 @@ Deferred / not done:
 - The cursor intent and `PlayerState.cursor` are M0 scaffolding. Remove them once balls are in.
 
 **Browser check (e2e, 2026-11-08).** `e2e/prod.two-browsers.spec.ts` (`npm run test:browser`, headless Chromium) runs two browser contexts against the local production build (`client/dist` served by `server/dist`, as `npm run build && npm start`), not a deployed URL: create a room, a wrong code is refused, join by code, both lobbies list both Players with their colours, the creator starts, and both see each other in the Standings and on the Hole canvas (screenshots checked). The cursor dots of M0 no longer exist (balls replaced them), so "see each other" was checked with the lobby, Standings and balls. Ticked on that basis; the Fly.io deploy box stays unticked (needs the owner's account).
+
+Deployed 2026-11-11 to https://troll-golf-khiem.fly.dev (one shared-cpu-1x 256 MB machine in iad, always on, serving the client). `ADMIN_SECRET` is set as a Fly secret. Fly's first deploy created two machines, which would split rooms across processes, so it was scaled to one; redeploy with `fly deploy --ha=false`. `e2e/prod.two-browsers.spec.ts` passed against the live URL.

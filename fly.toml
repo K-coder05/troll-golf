@@ -1,6 +1,6 @@
 # Fly.io config for one always-on machine (no cold start when friends click the link).
-# Set your own app name, then: fly launch --no-deploy && fly deploy
-app = "troll-golf"
+# Rooms are in-memory: run exactly ONE machine. Deploy with: fly deploy --ha=false
+app = "troll-golf-khiem"
 primary_region = "iad"
 
 [build]

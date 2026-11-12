@@ -50,4 +50,4 @@ docker build -t troll-golf .
 docker run -p 8080:8080 troll-golf   # then open http://localhost:8080
 ```
 
-`fly.toml` is set up for the spec's one always-on Fly.io machine (`auto_stop_machines = "off"`, `min_machines_running = 1`). Choose an app name, then `fly launch --no-deploy`, `fly secrets set ADMIN_SECRET=...` and `fly deploy`. It has not been deployed yet.
+`fly.toml` is set up for the spec's one always-on Fly.io machine (`auto_stop_machines = "off"`, `min_machines_running = 1`). Live at https://troll-golf-khiem.fly.dev. Redeploy with `fly deploy --ha=false` (rooms live in one process's memory, so the app must run exactly ONE machine; plain `fly deploy` on a fresh app creates two, fix with `fly scale count 1`). The Admin passphrase is the Fly secret `ADMIN_SECRET`.
