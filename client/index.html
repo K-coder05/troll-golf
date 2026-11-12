@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Troll Golf</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #12301c;
+        --panel: #1d4a2b;
+        --text: #f2f7ef;
+        --muted: #a9c9ae;
+        --accent: #ffd24d;
+        --error: #ff8080;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+      #game { position: fixed; inset: 0; }
+      .screen {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow-y: auto;
+        background: var(--bg);
+      }
+      .card {
+        width: min(380px, 100%); display: grid; gap: 12px; padding: 24px;
+        background: var(--panel); border-radius: 12px;
+      }
+      h1 { margin: 0 0 4px; font-size: 28px; }
+      h2 { margin: 0; font-size: 20px; }
+      #title { text-align: center; }
+      #title h1 { font-size: 56px; letter-spacing: 0.02em; }
+      #title p { margin: 0 0 8px; color: var(--muted); }
+      #title .card { background: transparent; }
+      .divider { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+      .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid #3d6b49; }
+      .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .swatch {
+        flex: none; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid transparent;
+        cursor: pointer;
+      }
+      .swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--bg) inset; }
+      .swatches input[type="color"] { width: 36px; height: 30px; padding: 0; border: 0; background: none; }
+      .lobby-code { font-size: 40px; font-weight: 800; letter-spacing: 0.25em; color: var(--accent); text-align: center; }
+      .lobby-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+      .lobby-head span { color: var(--muted); font-size: 14px; }
+      #lobby-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+      #lobby-players li {
+        display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: #0e2416;
+      }
+      #lobby-players .dot, #standings .dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; }
+      .tag { margin-left: auto; font-size: 12px; color: var(--muted); }
+      select { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d6b49; background: #0e2416; color: var(--text); }
+      #lobby-course-name, #lobby-chaos-name { padding: 8px 0; font-weight: 600; }
+      #lobby-wait { margin: 0; text-align: center; color: var(--muted); font-size: 14px; }
+      #standings {
+        position: fixed; top: 12px; right: 12px; min-width: 180px; max-width: 45%; padding: 6px 10px; border-radius: 6px;
+        background: rgba(0,0,0,0.45); font-size: 13px; pointer-events: none; font-variant-numeric: tabular-nums;
+      }
+      #standings table { border-collapse: collapse; width: 100%; }
+      #standings td { padding: 1px 4px; white-space: nowrap; }
+      #standings td.name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+      #standings td.num { text-align: right; }
+      #standings tr.me td { color: var(--accent); }
+      #standings tr.out td { opacity: 0.6; }
+      #standings tr.offline td, #standings tr.waiting td { opacity: 0.45; }
+      #standings .badge { font-size: 11px; color: var(--muted); }
+      #connection {
+        position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 10; pointer-events: none;
+        padding: 8px 16px; border-radius: 6px; background: rgba(120,20,20,0.85); font-weight: 600; white-space: nowrap;
+      }
+      #spectate {
+        position: fixed; bottom: 104px; left: 50%; transform: translateX(-50%); pointer-events: none;
+        padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,0.55); font-size: 14px; white-space: nowrap;
+      }
+      #mute {
+        position: fixed; bottom: 12px; left: 12px; z-index: 12; width: 36px; height: 36px; padding: 0;
+        border: 0; border-radius: 50%; background: rgba(0,0,0,0.45); font-size: 18px; cursor: pointer;
+      }
+      #emote-wheel {
+        position: fixed; left: 50%; top: 50%; z-index: 20; width: 220px; height: 220px; transform: translate(-50%, -50%);
+        border-radius: 50%; background: rgba(0,0,0,0.5);
+      }
+      #emote-wheel .emote {
+        position: absolute; width: 76px; height: 76px; border: 0; border-radius: 50%; font-size: 26px; font-weight: 800;
+        color: var(--text); background: var(--panel); cursor: pointer;
+      }
+      #emote-wheel .emote:hover { background: #2d6a41; }
+      #emote-wheel .emote-0 { left: 72px; top: 4px; }
+      #emote-wheel .emote-1 { left: 140px; top: 72px; }
+      #emote-wheel .emote-2 { left: 72px; top: 140px; }
+      #emote-wheel .emote-3 { left: 4px; top: 72px; }
+      @media (max-width: 600px) {
+        #standings { top: auto; bottom: 12px; }
+        #spectate { bottom: auto; top: 64px; }
+      }
+      label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+      input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d6b49; background: #0e2416; color: var(--text); }
+      input[type="color"] { padding: 2px; height: 40px; }
+      #code { text-transform: uppercase; letter-spacing: 0.3em; }
+      .row { display: flex; gap: 8px; }
+      button { flex: 1; font: inherit; font-weight: 600; padding: 10px; border: 0; border-radius: 6px; cursor: pointer; background: var(--accent); color: #2b2100; }
+      button.secondary { background: #3d6b49; color: var(--text); }
+      button:disabled { opacity: 0.6; cursor: wait; }
+      #error { min-height: 1.2em; margin: 0; color: var(--error); font-size: 14px; }
+      #hud { position: fixed; top: 12px; left: 12px; max-width: calc(50% - 80px); padding: 6px 12px; border-radius: 6px; background: rgba(0,0,0,0.45); font-size: 14px; }
+      #hud .hint { margin-top: 2px; font-size: 12px; color: var(--muted); }
+      #hud { pointer-events: none; }
+      #hud strong { color: var(--accent); letter-spacing: 0.2em; }
+      #timer {
+        position: fixed; top: 12px; left: 50%; transform: translateX(-50%); pointer-events: none;
+        padding: 4px 16px; border-radius: 6px; background: rgba(0,0,0,0.45);
+        font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums;
+      }
+      #timer.urgent { color: var(--error); }
+      #banner {
+        position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;
+        font-size: 120px; font-weight: 800; color: var(--accent); text-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      }
+      #scoreboard {
+        position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+        background: rgba(0,0,0,0.35); pointer-events: none;
+      }
+      #scoreboard .panel {
+        max-width: 100%; overflow-x: auto; padding: 20px 24px; border-radius: 12px; background: var(--panel);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      }
+      #scoreboard h2 { margin: 0 0 12px; text-align: center; }
+      #scoreboard table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+      #scoreboard th, #scoreboard td { padding: 4px 10px; text-align: center; }
+      #scoreboard td:nth-child(2), #scoreboard th:nth-child(2) { text-align: left; white-space: nowrap; }
+      #scoreboard tr.par td { color: var(--muted); font-size: 13px; }
+      #scoreboard tr.me td { background: rgba(255,255,255,0.08); }
+      #scoreboard tr.winner td:nth-child(2)::after { content: " 🏆"; }
+      #scoreboard td.under { color: #7dff7d; }
+      #scoreboard td.over { color: #ffb080; }
+      #scoreboard .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
+      #scoreboard .panel { max-height: 100%; overflow-y: auto; }
+      #recap { margin-top: 16px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); max-width: 640px; }
+      #recap h3 { margin: 8px 0; text-align: center; }
+      #recap .recap-list { margin: 0; padding: 0; list-style: none; }
+      #recap .recap-list li { padding: 3px 0; }
+      #recap .recap-icon { margin-right: 6px; }
+      #recap .recap-small, #recap .recap-none { color: var(--muted); font-size: 13px; text-align: center; }
+      #recap .recap-reveal { color: var(--accent); }
+      #scoreboard-footer { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 14px; }
+      #gods-banner {
+        position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%); z-index: 15; pointer-events: none;
+        padding: 14px 28px; border-radius: 12px; text-align: center; white-space: nowrap;
+        background: linear-gradient(180deg, rgba(60,40,0,0.85), rgba(20,10,0,0.85)); border: 2px solid var(--accent);
+        box-shadow: 0 0 40px rgba(255,210,77,0.5); animation: gods-in 0.35s ease-out;
+      }
+      #gods-text { font-size: 32px; font-weight: 800; color: var(--accent); text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+      #gods-detail { margin-top: 4px; font-size: 16px; color: var(--text); }
+      #gods-detail:empty { display: none; }
+      @keyframes gods-in { from { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
+      @media (max-width: 600px) { #gods-text { font-size: 20px; } #gods-banner { white-space: normal; width: calc(100% - 32px); } }
+      body.crosshair, body.crosshair canvas { cursor: crosshair !important; }
+      #item-slot {
+        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 5;
+        width: 76px; height: 76px; border-radius: 14px; display: grid; place-items: center; align-content: center;
+        background: rgba(0,0,0,0.55); border: 3px solid var(--accent); cursor: pointer; user-select: none;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      }
+      #item-slot.empty { border-color: rgba(255,255,255,0.25); cursor: default; }
+      #item-slot.spinning { border-color: #fff; }
+      #item-slot.landed { animation: item-land 0.4s ease-out; }
+      #item-slot.denied { animation: item-shake 0.35s; }
+      #item-icon { font-size: 36px; line-height: 1; }
+      #item-name { position: absolute; top: 100%; margin-top: 2px; font-size: 12px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+      #item-note {
+        position: absolute; bottom: 100%; margin-bottom: 6px; font-size: 13px; white-space: nowrap; color: var(--error);
+        text-shadow: 0 1px 3px #000; pointer-events: none;
+      }
+      #item-slot.empty #item-icon::after { content: "?"; font-size: 28px; opacity: 0.3; }
+      @keyframes item-land { 50% { transform: translateX(-50%) scale(1.2); } }
+      @keyframes item-shake { 25% { transform: translateX(calc(-50% - 6px)); } 75% { transform: translateX(calc(-50% + 6px)); } }
+      #kill-feed {
+        position: fixed; top: 220px; right: 12px; max-width: 45%; display: grid; gap: 4px; justify-items: end;
+        pointer-events: none; z-index: 4;
+      }
+      #kill-feed .line {
+        padding: 3px 10px; border-radius: 6px; background: rgba(0,0,0,0.55); font-size: 13px; font-weight: 600;
+        text-shadow: 0 1px 2px #000; animation: feed-in 0.25s ease-out; transition: opacity 0.6s;
+      }
+      #kill-feed .line.hit { border-left: 3px solid #7fd8ff; }
+      #kill-feed .line.block { border-left: 3px solid #b48cff; }
+      #kill-feed .line.fade { opacity: 0; }
+      @keyframes feed-in { from { transform: translateX(30px); opacity: 0; } }
+      #target-picker {
+        position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); z-index: 6; min-width: 220px;
+        padding: 8px 12px; border-radius: 8px; background: rgba(0,0,0,0.75); border: 2px solid var(--accent); font-size: 14px;
+      }
+      #target-picker h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+      #target-picker button {
+        display: flex; gap: 8px; align-items: center; width: 100%; margin: 2px 0; padding: 4px 8px; border-radius: 6px;
+        border: 0; background: rgba(255,255,255,0.08); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+      }
+      #target-picker button:disabled { opacity: 0.35; cursor: default; }
+      #target-picker button .key { font-weight: 700; color: var(--accent); width: 1em; }
+      #target-picker button .why { margin-left: auto; font-size: 11px; color: var(--muted); }
+      #target-picker .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+      #frozen-hint {
+        position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5;
+        padding: 6px 14px; border-radius: 6px; background: rgba(40,110,160,0.85); font-weight: 700; white-space: nowrap;
+      }
+      @media (max-width: 600px) { #kill-feed { top: 64px; } }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <section id="title" class="screen">
+      <div class="card">
+        <h1>Troll Golf</h1>
+        <p>Mini-golf with friends. Sabotage encouraged.</p>
+        <button id="play" type="button">Play</button>
+      </div>
+    </section>
+    <section id="join-screen" class="screen" hidden>
+      <form id="join-form" class="card" autocomplete="off">
+        <h1>Troll Golf</h1>
+        <label>Nickname <input id="name" maxlength="16" required placeholder="Maya" /></label>
+        <div>
+          <label for="color">Ball colour</label>
+          <div class="swatches" id="swatches"><input id="color" type="color" value="#ff3366" title="Pick any colour" /></div>
+        </div>
+        <button id="create" type="button">Create room</button>
+        <div class="divider">or join friends</div>
+        <label>Room code <input id="code" maxlength="4" placeholder="GOLF" /></label>
+        <input id="secret" type="password" autocomplete="off" aria-label="Passphrase" placeholder="•••" hidden />
+        <div class="row"><button id="join" type="submit" class="secondary">Join room</button></div>
+        <p id="error" role="alert"></p>
+      </form>
+    </section>
+    <section id="lobby-screen" class="screen" hidden>
+      <div class="card">
+        <div class="lobby-head"><h2>Lobby</h2><span id="lobby-count"></span></div>
+        <div class="lobby-code" id="lobby-code"></div>
+        <button id="copy-link" type="button" class="secondary">Copy invite link</button>
+        <ul id="lobby-players"></ul>
+        <label>Course
+          <select id="lobby-course"></select>
+        </label>
+        <div id="lobby-course-name"></div>
+        <label>Chaos level
+          <select id="lobby-chaos">
+            <option value="chill">Chill (0.6x)</option>
+            <option value="normal">Normal (1x)</option>
+            <option value="unhinged">Unhinged (1.5x)</option>
+          </select>
+        </label>
+        <div id="lobby-chaos-name"></div>
+        <button id="start" type="button">Start game</button>
+        <p id="lobby-wait"></p>
+        <button id="leave" type="button" class="secondary">Leave</button>
+      </div>
+    </section>
+    <div id="hud" hidden>
+      <div id="hole-info"></div>
+      <div class="hint">Room <strong id="room-code"></strong> · <span id="player-count"></span></div>
+      <div class="hint">Drag back from your ball and release to shoot · tap Space to use your Item (attacks hit the Leader), hold Space to pick a target · hold Tab to see the whole Hole and the scoreboard · Q for emotes</div>
+    </div>
+    <div id="timer" hidden></div>
+    <div id="standings" hidden><table id="standings-table"></table></div>
+    <div id="spectate" hidden></div>
+    <div id="item-slot" class="empty" role="button" title="Use your Item (Space)" hidden>
+      <div id="item-icon"></div><div id="item-name"></div><div id="item-note"></div>
+    </div>
+    <div id="kill-feed"></div>
+    <div id="target-picker" hidden><h3>Pick a target: click a ball or press 1–8</h3><div id="target-list"></div></div>
+    <div id="frozen-hint" hidden>🧊 Frozen! Mash click to break free</div>
+    <button id="mute" type="button" aria-label="Toggle sound"></button>
+    <div id="emote-wheel" hidden></div>
+    <div id="connection" hidden>Connection lost · reconnecting…</div>
+    <div id="banner" hidden></div>
+    <div id="gods-banner" hidden><div id="gods-text"></div><div id="gods-detail"></div></div>
+    <div id="scoreboard" hidden>
+      <div class="panel">
+        <h2 id="scoreboard-title"></h2>
+        <table id="scoreboard-table"></table>
+        <div id="recap" hidden></div>
+        <p id="scoreboard-footer"></p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

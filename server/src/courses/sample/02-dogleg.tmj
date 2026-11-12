@@ -1,0 +1,186 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 50,
+ "height": 40,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Dogleg"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 800,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 624,
+     "width": 800,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 784,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 5,
+     "class": "Wall",
+     "x": 300,
+     "y": 220,
+     "width": 484,
+     "height": 404
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 6,
+     "class": "Sand",
+     "x": 16,
+     "y": 16,
+     "width": 104,
+     "height": 94
+    },
+    {
+     "id": 7,
+     "class": "Ice",
+     "x": 16,
+     "y": 300,
+     "width": 284,
+     "height": 120
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 8,
+     "class": "Tee",
+     "x": 150,
+     "y": 540,
+     "point": true
+    },
+    {
+     "id": 9,
+     "class": "Cup",
+     "x": 680,
+     "y": 118,
+     "point": true
+    },
+    {
+     "id": 10,
+     "class": "ItemBox",
+     "x": 230,
+     "y": 130,
+     "point": true
+    },
+    {
+     "id": 13,
+     "class": "ItemBox",
+     "x": 60,
+     "y": 460,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "ItemBox",
+     "x": 520,
+     "y": 190,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": [
+    {
+     "id": 11,
+     "class": "Windmill",
+     "x": 158,
+     "y": 290,
+     "point": true,
+     "properties": [
+      {
+       "name": "length",
+       "type": "float",
+       "value": 170
+      },
+      {
+       "name": "thickness",
+       "type": "float",
+       "value": 12
+      },
+      {
+       "name": "speed",
+       "type": "float",
+       "value": 60
+      }
+     ]
+    },
+    {
+     "id": 12,
+     "class": "SlidingWall",
+     "x": 413,
+     "y": 58,
+     "width": 14,
+     "height": 120,
+     "properties": [
+      {
+       "name": "travelX",
+       "type": "float",
+       "value": 170
+      },
+      {
+       "name": "period",
+       "type": "float",
+       "value": 4
+      },
+      {
+       "name": "phase",
+       "type": "float",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

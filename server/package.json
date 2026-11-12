@@ -1,0 +1,23 @@
+{
+  "name": "@troll-golf/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@colyseus/core": "^0.18.27",
+    "@colyseus/schema": "^5.0.45",
+    "@colyseus/ws-transport": "^0.18.4",
+    "@troll-golf/shared": "*",
+    "express": "^5.3.0",
+    "planck": "^1.5.1"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "^0.18.9"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "node build.mjs",
+    "start": "NODE_ENV=production node --enable-source-maps dist/index.js",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

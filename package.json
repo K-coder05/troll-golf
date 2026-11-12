@@ -1,0 +1,37 @@
+{
+  "name": "troll-golf",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client",
+    "tools"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @troll-golf/server & npm run dev -w @troll-golf/client & wait",
+    "build": "npm run build -w @troll-golf/shared && npm run build -w @troll-golf/client && npm run build -w @troll-golf/server",
+    "start": "npm start -w @troll-golf/server",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces && tsc -p e2e",
+    "convert-course": "npm run convert-course -w @troll-golf/tools --",
+    "convert-sample-course": "npm run convert-course -- --id sample --name \"Sample Course\" --out server/src/courses/sample.json server/src/courses/sample/01-warm-up.tmj server/src/courses/sample/02-dogleg.tmj server/src/courses/sample/03-island-hop.tmj",
+    "convert-v1-course": "npm run convert-course -- --id v1 --name \"Troll Golf v1\" --out server/src/courses/v1.json server/src/courses/v1/01-opener.tmj server/src/courses/v1/02-dogleg.tmj server/src/courses/v1/03-sand-traps.tmj server/src/courses/v1/04-lagoon.tmj server/src/courses/v1/05-ice-rink.tmj server/src/courses/v1/06-boost-lane.tmj server/src/courses/v1/07-windmill-works.tmj server/src/courses/v1/08-warp-zone.tmj server/src/courses/v1/09-chaos-finale.tmj",
+    "build:e2e": "npm run build && npm run build:e2e -w @troll-golf/client",
+    "test:browser": "npm run build:e2e && playwright test"
+  }
+}

@@ -1,0 +1,174 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 40,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Island Hop"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 624,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 5,
+     "class": "Water",
+     "x": 380,
+     "y": 16,
+     "width": 200,
+     "height": 234
+    },
+    {
+     "id": 6,
+     "class": "Water",
+     "x": 380,
+     "y": 390,
+     "width": 200,
+     "height": 234
+    },
+    {
+     "id": 7,
+     "class": "BoostPad",
+     "x": 420,
+     "y": 290,
+     "width": 120,
+     "height": 60,
+     "properties": [
+      {
+       "name": "direction",
+       "type": "float",
+       "value": 0.0
+      }
+     ]
+    },
+    {
+     "id": 8,
+     "class": "Sand",
+     "x": 750,
+     "y": 230,
+     "width": 60,
+     "height": 50
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 9,
+     "class": "Tee",
+     "x": 120,
+     "y": 320,
+     "point": true
+    },
+    {
+     "id": 10,
+     "class": "Cup",
+     "x": 840,
+     "y": 320,
+     "point": true
+    },
+    {
+     "id": 11,
+     "class": "Teleporter",
+     "x": 200,
+     "y": 120,
+     "point": true,
+     "properties": [
+      {
+       "name": "pair",
+       "type": "string",
+       "value": "A"
+      }
+     ]
+    },
+    {
+     "id": 12,
+     "class": "Teleporter",
+     "x": 780,
+     "y": 520,
+     "point": true,
+     "properties": [
+      {
+       "name": "pair",
+       "type": "string",
+       "value": "A"
+      }
+     ]
+    },
+    {
+     "id": 13,
+     "class": "ItemBox",
+     "x": 680,
+     "y": 140,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "ItemBox",
+     "x": 250,
+     "y": 520,
+     "point": true
+    },
+    {
+     "id": 15,
+     "class": "ItemBox",
+     "x": 860,
+     "y": 160,
+     "point": true
+    }
+   ]
+  }
+ ]
+}

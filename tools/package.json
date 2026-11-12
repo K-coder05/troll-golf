@@ -1,0 +1,13 @@
+{
+  "name": "@troll-golf/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@troll-golf/shared": "*"
+  },
+  "scripts": {
+    "convert-course": "tsx src/convertCourse.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -1,0 +1,128 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 50,
+ "height": 30,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Opener"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 2
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 800,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 464,
+     "width": 800,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 480
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 784,
+     "y": 0,
+     "width": 16,
+     "height": 480
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 5,
+     "class": "Rough",
+     "x": 16,
+     "y": 16,
+     "width": 768,
+     "height": 110
+    },
+    {
+     "id": 6,
+     "class": "Rough",
+     "x": 16,
+     "y": 354,
+     "width": 768,
+     "height": 110
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 7,
+     "class": "Tee",
+     "x": 110,
+     "y": 240,
+     "point": true
+    },
+    {
+     "id": 8,
+     "class": "Cup",
+     "x": 690,
+     "y": 240,
+     "point": true
+    },
+    {
+     "id": 9,
+     "class": "ItemBox",
+     "x": 250,
+     "y": 70,
+     "point": true
+    },
+    {
+     "id": 10,
+     "class": "ItemBox",
+     "x": 560,
+     "y": 80,
+     "point": true
+    },
+    {
+     "id": 11,
+     "class": "ItemBox",
+     "x": 400,
+     "y": 410,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": []
+  }
+ ]
+}

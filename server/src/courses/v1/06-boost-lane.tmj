@@ -1,0 +1,206 @@
+{
+ "type": "map",
+ "orientation": "orthogonal",
+ "width": 60,
+ "height": 40,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "properties": [
+  {
+   "name": "name",
+   "type": "string",
+   "value": "Boost Lane"
+  },
+  {
+   "name": "par",
+   "type": "int",
+   "value": 3
+  }
+ ],
+ "layers": [
+  {
+   "type": "objectgroup",
+   "name": "walls",
+   "objects": [
+    {
+     "id": 1,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 2,
+     "class": "Wall",
+     "x": 0,
+     "y": 624,
+     "width": 960,
+     "height": 16
+    },
+    {
+     "id": 3,
+     "class": "Wall",
+     "x": 0,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 4,
+     "class": "Wall",
+     "x": 944,
+     "y": 0,
+     "width": 16,
+     "height": 640
+    },
+    {
+     "id": 9,
+     "class": "Wall",
+     "x": 780,
+     "y": 330,
+     "width": 24,
+     "height": 294
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "surfaces",
+   "objects": [
+    {
+     "id": 5,
+     "class": "Rough",
+     "x": 16,
+     "y": 16,
+     "width": 200,
+     "height": 100
+    },
+    {
+     "id": 6,
+     "class": "Void",
+     "x": 360,
+     "y": 16,
+     "width": 240,
+     "height": 200
+    },
+    {
+     "id": 7,
+     "class": "Void",
+     "x": 360,
+     "y": 424,
+     "width": 240,
+     "height": 200
+    },
+    {
+     "id": 8,
+     "class": "Void",
+     "x": 700,
+     "y": 100,
+     "width": 120,
+     "height": 120
+    },
+    {
+     "id": 10,
+     "class": "BoostPad",
+     "x": 400,
+     "y": 290,
+     "width": 160,
+     "height": 60,
+     "properties": [
+      {
+       "name": "direction",
+       "type": "float",
+       "value": 0
+      },
+      {
+       "name": "strength",
+       "type": "float",
+       "value": 1.5
+      }
+     ]
+    },
+    {
+     "id": 11,
+     "class": "BoostPad",
+     "x": 690,
+     "y": 500,
+     "width": 90,
+     "height": 80,
+     "properties": [
+      {
+       "name": "direction",
+       "type": "float",
+       "value": -90
+      },
+      {
+       "name": "strength",
+       "type": "float",
+       "value": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "points",
+   "objects": [
+    {
+     "id": 12,
+     "class": "Tee",
+     "x": 110,
+     "y": 320,
+     "point": true
+    },
+    {
+     "id": 13,
+     "class": "Cup",
+     "x": 870,
+     "y": 540,
+     "point": true
+    },
+    {
+     "id": 14,
+     "class": "ItemBox",
+     "x": 230,
+     "y": 100,
+     "point": true
+    },
+    {
+     "id": 15,
+     "class": "ItemBox",
+     "x": 230,
+     "y": 540,
+     "point": true
+    },
+    {
+     "id": 16,
+     "class": "ItemBox",
+     "x": 480,
+     "y": 235,
+     "point": true
+    },
+    {
+     "id": 17,
+     "class": "ItemBox",
+     "x": 250,
+     "y": 430,
+     "point": true
+    },
+    {
+     "id": 18,
+     "class": "ItemBox",
+     "x": 730,
+     "y": 280,
+     "point": true
+    }
+   ]
+  },
+  {
+   "type": "objectgroup",
+   "name": "obstacles",
+   "objects": []
+  }
+ ]
+}
